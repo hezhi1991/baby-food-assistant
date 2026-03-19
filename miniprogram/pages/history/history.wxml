@@ -1,0 +1,39 @@
+<view class="container">
+  <view class="header">
+    <text class="title text-bold">成长历史</text>
+  </view>
+
+  <!-- 体重趋势 (简易模拟) -->
+  <view class="duo-card">
+    <view class="flex-between">
+      <text class="text-bold">体重趋势</text>
+      <text class="text-orange">最新: 8.5kg</text>
+    </view>
+    <view class="chart-placeholder">
+      <view class="bar" style="height: 40rpx;"></view>
+      <view class="bar" style="height: 60rpx;"></view>
+      <view class="bar" style="height: 80rpx;"></view>
+      <view class="bar" style="height: 100rpx;"></view>
+      <view class="bar" style="height: 120rpx;"></view>
+    </view>
+  </view>
+
+  <!-- 历史记录列表 -->
+  <view class="history-list">
+    <block wx:for="{{historyData}}" wx:key="date">
+      <view class="date-group">
+        <view class="date-header text-bold">{{item.date}}</view>
+        <view wx:for="{{item.records}}" wx:for-item="record" wx:key="id" class="history-item duo-card">
+          <view class="flex-between">
+            <view class="item-main">
+              <text class="item-time">{{record.time}}</text>
+              <text class="item-type text-bold">{{record.type === 'milk' ? '喂奶' : '辅食'}}</text>
+            </view>
+            <text class="item-val text-orange">{{record.val}}</text>
+          </view>
+          <view class="item-desc">{{record.desc}}</view>
+        </view>
+      </view>
+    </block>
+  </view>
+</view>

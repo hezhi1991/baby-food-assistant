@@ -1,0 +1,69 @@
+<view class="container">
+  <!-- 婴语提醒 -->
+  <view class="reminder-card" wx:if="{{upcomingMeal}}">
+    <view class="reminder-content">
+      <text class="reminder-text text-bold">宝宝饿啦！该喂奶了 ({{upcomingMeal.time}})</text>
+    </view>
+    <view class="reminder-btn" bindtap="addMeal">去打卡</view>
+  </view>
+
+  <!-- 宝宝状态概览 -->
+  <view class="duo-card">
+    <view class="flex-between">
+      <view>
+        <text class="baby-name text-bold">{{babyInfo.name}}</text>
+        <view class="baby-meta">{{babyInfo.months}}个月 · {{babyInfo.gender === 'boy' ? '小王子' : '小公主'}}</view>
+      </view>
+      <image class="baby-avatar" src="/assets/avatar.png" mode="aspectFill"></image>
+    </view>
+    
+    <view class="stats-grid">
+      <view class="stat-item">
+        <text class="stat-label">今日奶量</text>
+        <text class="stat-value text-orange">{{totalMilk}}ml</text>
+        <text class="stat-target">目标 {{totalMilkPlanned}}ml</text>
+      </view>
+      <view class="stat-item">
+        <text class="stat-label">今日辅食</text>
+        <text class="stat-value text-orange">{{totalFood}}勺</text>
+        <text class="stat-target">目标 {{totalFoodPlanned}}勺</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 快捷操作 -->
+  <view class="quick-actions">
+    <view class="action-btn duo-card" bindtap="addMeal">
+      <text class="action-icon">🍼</text>
+      <text class="action-text text-bold">记喂奶</text>
+    </view>
+    <view class="action-btn duo-card" bindtap="addFood">
+      <text class="action-icon">🥣</text>
+      <text class="action-text text-bold">记辅食</text>
+    </view>
+  </view>
+
+  <!-- 今日任务列表 -->
+  <view class="section-header flex-between">
+    <text class="section-title text-bold">今日任务</text>
+    <text class="section-more" bindtap="goToPlan">查看全部 ></text>
+  </view>
+  
+  <block wx:for="{{todayMeals}}" wx:key="id">
+    <view class="meal-item duo-card {{item.isCompleted ? 'completed' : ''}}" bindtap="viewMeal" data-id="{{item.id}}">
+      <view class="meal-time">{{item.time}}</view>
+      <view class="meal-info">
+        <text class="meal-type text-bold">{{item.type === 'milk' ? '喂奶' : '辅食'}}</text>
+        <text class="meal-desc">{{item.desc}}</text>
+      </view>
+      <view class="meal-status">
+        <icon type="{{item.isCompleted ? 'success' : 'circle'}}" size="24" color="{{item.isCompleted ? '#4CAF50' : '#ddd'}}"></icon>
+      </view>
+    </view>
+  </block>
+
+  <!-- AI 助手入口浮窗 -->
+  <view class="ai-fab duo-btn-orange" bindtap="goToAI">
+    <text>🤖 问问 AI</text>
+  </view>
+</view>

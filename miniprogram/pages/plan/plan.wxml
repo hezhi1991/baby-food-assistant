@@ -1,0 +1,80 @@
+<view class="container">
+  <view class="header flex-between">
+    <text class="title text-bold">喂养计划</text>
+    <view class="add-btn duo-btn-orange" bindtap="showAddModal">
+      <text>+</text>
+    </view>
+  </view>
+
+  <!-- 日历选择器 (简易版) -->
+  <view class="calendar-strip duo-card">
+    <scroll-view scroll-x class="date-scroll" scroll-into-view="{{'date-' + selectedDate}}">
+      <view wx:for="{{dates}}" wx:key="full" id="{{'date-' + item.full}}" 
+            class="date-item {{selectedDate === item.full ? 'active' : ''}}" 
+            bindtap="selectDate" data-date="{{item.full}}">
+        <text class="day-name">{{item.dayName}}</text>
+        <text class="day-num text-bold">{{item.dayNum}}</text>
+      </view>
+    </scroll-view>
+  </view>
+
+  <!-- 计划列表 -->
+  <view class="plan-list">
+    <view class="section-title text-bold">{{selectedDateDisplay}} 计划</view>
+    
+    <block wx:if="{{dayPlans.length > 0}}">
+      <view wx:for="{{dayPlans}}" wx:key="id" class="plan-card duo-card">
+        <view class="plan-header flex-between">
+          <view class="plan-type-tag {{item.type}}">{{item.type === 'milk' ? '🍼 喂奶' : '🥣 辅食'}}</view>
+          <text class="plan-time text-bold">{{item.time}}</text>
+        </view>
+        <view class="plan-body">
+          <text class="plan-desc">{{item.desc}}</text>
+        </view>
+        <view class="plan-footer flex-between">
+          <view class="action-links">
+            <text class="edit-link" bindtap="editPlan" data-id="{{item.id}}">编辑</text>
+            <text class="delete-link" bindtap="deletePlan" data-id="{{item.id}}">删除</text>
+          </view>
+          <view class="complete-btn {{item.isCompleted ? 'done' : ''}}" bindtap="toggleComplete" data-id="{{item.id}}">
+            {{item.isCompleted ? '已完成' : '去打卡'}}
+          </view>
+        </view>
+      </view>
+    </block>
+    
+    <view wx:else class="empty-state">
+      <image src="/assets/empty.png" mode="aspectFit" class="empty-img"></image>
+      <text>今天还没有计划哦</text>
+      <view class="duo-btn-orange" style="width: 200rpx; margin-top: 20rpx;" bindtap="showAddModal">去添加</view>
+    </view>
+  </view>
+
+  <!-- 添加/编辑弹窗 (简易模拟) -->
+  <view class="modal" wx:if="{{showModal}}">
+    <view class="modal-content duo-card">
+      <view class="modal-header flex-between">
+        <text class="text-bold">{{editingId ? '编辑计划' : '新增计划'}}</text>
+        <icon type="cancel" size="24" bindtap="hideModal"></icon>
+      </view>
+      <view class="form-item">
+        <text class="label">时间</text>
+        <picker mode="time" value="{{formTime}}" bindchange="onTimeChange">
+          <view class="picker-val">{{formTime}}</view>
+        </picker>
+      </view>
+      <view class="form-item">
+        <text class="label">类型</text>
+        <radio-group bindchange="onTypeChange">
+          <label class="radio-label"><radio value="milk" checked="{{formType === 'milk'}}"/>喂奶</label>
+          <label class="radio-label"><radio value="food" checked="{{formType === 'food'}}"/>辅食</label>
+        </radio-group>
+      </view>
+      <view class="form-item">
+        <text class="label">描述</text>
+        <textarea class="form-input" placeholder="例如：母乳 180ml" value="{{formDesc}}" bindinput="onDescInput"></textarea>
+      </view>
+      <view class="duo-btn-orange" bindtap="savePlan">保存计划</view>
+    </view>
+  </view>
+</view>

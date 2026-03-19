@@ -1,0 +1,5 @@
+{
+  "name": "宝宝辅食助手",
+  "description": "专为新手爸妈设计的宝宝辅食规划与营养追踪工具，支持AI智能咨询与个性化食谱推荐。",
+  "requestFramePermissions": ["camera"]
+}

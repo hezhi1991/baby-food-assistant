@@ -1,0 +1,36 @@
+.header {
+  margin-bottom: 30rpx;
+}
+
+.title {
+  font-size: 48rpx;
+}
+
+.wiki-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 30rpx;
+  margin-bottom: 20rpx;
+}
+
+.wiki-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.wiki-title {
+  font-size: 32rpx;
+  margin-bottom: 10rpx;
+}
+
+.wiki-summary {
+  font-size: 24rpx;
+  color: #999;
+}
+
+.arrow {
+  color: #ccc;
+  font-size: 24rpx;
+}

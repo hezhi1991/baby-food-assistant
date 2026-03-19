@@ -1,0 +1,58 @@
+/**app.wxss**/
+page {
+  background-color: #f7f7f7;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  color: #333;
+}
+
+.container {
+  padding: 30rpx;
+  box-sizing: border-box;
+}
+
+/* Duo-style Card */
+.duo-card {
+  background: #ffffff;
+  border-radius: 40rpx;
+  border: 4rpx solid #e5e5e5;
+  box-shadow: 0 8rpx 0 0 #e5e5e5;
+  padding: 30rpx;
+  margin-bottom: 30rpx;
+  transition: all 0.2s;
+}
+
+.duo-card:active {
+  transform: translateY(4rpx);
+  box-shadow: 0 4rpx 0 0 #e5e5e5;
+}
+
+/* Duo-style Buttons */
+.duo-btn-orange {
+  background: #ff9600;
+  color: #ffffff;
+  border-radius: 30rpx;
+  border: 4rpx solid #e68700;
+  box-shadow: 0 8rpx 0 0 #e68700;
+  font-weight: 900;
+  text-align: center;
+  padding: 20rpx 0;
+}
+
+.duo-btn-orange:active {
+  transform: translateY(4rpx);
+  box-shadow: 0 4rpx 0 0 #e68700;
+}
+
+.text-bold {
+  font-weight: 900;
+}
+
+.text-orange {
+  color: #ff9600;
+}
+
+.flex-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}

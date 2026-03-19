@@ -1,0 +1,34 @@
+<view class="container">
+  <view class="header">
+    <text class="title text-bold">辅食食谱</text>
+  </view>
+
+  <!-- 搜索栏 -->
+  <view class="search-bar duo-card">
+    <icon type="search" size="16" color="#999"></icon>
+    <input placeholder="搜索食材或食谱..." bindinput="onSearch"></input>
+  </view>
+
+  <!-- 分类 -->
+  <scroll-view scroll-x class="category-scroll">
+    <view wx:for="{{categories}}" wx:key="*this" 
+          class="cat-item {{activeCat === item ? 'active' : ''}}" 
+          bindtap="selectCat" data-cat="{{item}}">
+      {{item}}
+    </view>
+  </scroll-view>
+
+  <!-- 食谱列表 -->
+  <view class="recipe-grid">
+    <view wx:for="{{recipes}}" wx:key="id" class="recipe-card duo-card" bindtap="viewRecipe" data-id="{{item.id}}">
+      <image class="recipe-img" src="{{item.image || '/assets/recipe-default.png'}}" mode="aspectFill"></image>
+      <view class="recipe-info">
+        <text class="recipe-name text-bold">{{item.name}}</text>
+        <view class="recipe-meta">
+          <text class="age-tag">{{item.age}}个月+</text>
+          <text class="diff-tag">{{item.difficulty}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

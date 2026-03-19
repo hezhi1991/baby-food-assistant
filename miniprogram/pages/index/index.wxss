@@ -1,0 +1,150 @@
+.reminder-card {
+  background: #ff9600;
+  border-radius: 30rpx;
+  padding: 30rpx;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 40rpx;
+  border: 4rpx solid #e68700;
+  box-shadow: 0 8rpx 0 0 #e68700;
+}
+
+.reminder-text {
+  color: #ffffff;
+  font-size: 28rpx;
+}
+
+.reminder-btn {
+  background: #ffffff;
+  color: #ff9600;
+  padding: 10rpx 30rpx;
+  border-radius: 20rpx;
+  font-size: 24rpx;
+  font-weight: 900;
+}
+
+.baby-avatar {
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: 50%;
+  background: #eee;
+}
+
+.baby-name {
+  font-size: 40rpx;
+}
+
+.baby-meta {
+  font-size: 24rpx;
+  color: #999;
+  margin-top: 4rpx;
+}
+
+.stats-grid {
+  display: flex;
+  margin-top: 40rpx;
+  border-top: 2rpx solid #f0f0f0;
+  padding-top: 30rpx;
+}
+
+.stat-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-label {
+  font-size: 20rpx;
+  color: #999;
+  text-transform: uppercase;
+}
+
+.stat-value {
+  font-size: 48rpx;
+  font-weight: 900;
+  margin: 10rpx 0;
+}
+
+.stat-target {
+  font-size: 20rpx;
+  color: #ccc;
+}
+
+.quick-actions {
+  display: flex;
+  gap: 20rpx;
+}
+
+.action-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40rpx 0;
+}
+
+.action-icon {
+  font-size: 60rpx;
+  margin-bottom: 10rpx;
+}
+
+.action-text {
+  font-size: 28rpx;
+}
+
+.section-header {
+  margin: 40rpx 0 20rpx;
+}
+
+.section-title {
+  font-size: 32rpx;
+}
+
+.section-more {
+  font-size: 24rpx;
+  color: #999;
+}
+
+.meal-item {
+  display: flex;
+  align-items: center;
+  padding: 30rpx;
+}
+
+.meal-time {
+  font-size: 24rpx;
+  color: #999;
+  width: 100rpx;
+}
+
+.meal-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.meal-type {
+  font-size: 28rpx;
+}
+
+.meal-desc {
+  font-size: 24rpx;
+  color: #666;
+  margin-top: 4rpx;
+}
+
+.meal-item.completed {
+  opacity: 0.6;
+}
+
+.ai-fab {
+  position: fixed;
+  bottom: 60rpx;
+  right: 40rpx;
+  padding: 20rpx 40rpx;
+  border-radius: 50rpx;
+  font-size: 28rpx;
+  box-shadow: 0 10rpx 20rpx rgba(255, 150, 0, 0.3);
+  z-index: 100;
+}

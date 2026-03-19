@@ -1,0 +1,30 @@
+<view class="container">
+  <scroll-view scroll-y class="chat-scroll" scroll-into-view="{{lastMsgId}}">
+    <view class="chat-list">
+      <block wx:for="{{messages}}" wx:key="id">
+        <view id="{{'msg-' + item.id}}" class="msg-item {{item.role}}">
+          <view class="avatar">
+            <text wx:if="{{item.role === 'ai'}}">🤖</text>
+            <text wx:else>👶</text>
+          </view>
+          <view class="msg-bubble duo-card">
+            <text class="msg-text">{{item.text}}</text>
+          </view>
+        </view>
+      </block>
+      <view wx:if="{{isTyping}}" class="msg-item ai">
+        <view class="avatar">🤖</view>
+        <view class="msg-bubble duo-card typing">
+          <view class="dot"></view>
+          <view class="dot"></view>
+          <view class="dot"></view>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+
+  <view class="input-area duo-card">
+    <input class="chat-input" placeholder="问问我关于辅食的问题..." value="{{inputText}}" bindinput="onInput" bindconfirm="sendMessage" confirm-type="send"></input>
+    <view class="send-btn duo-btn-orange" bindtap="sendMessage">发送</view>
+  </view>
+</view>

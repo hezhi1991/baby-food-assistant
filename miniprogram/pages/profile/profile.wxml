@@ -1,0 +1,57 @@
+<view class="container">
+  <!-- 用户信息 -->
+  <view class="user-header duo-card flex-between">
+    <view class="user-info">
+      <text class="user-name text-bold">妈妈</text>
+      <text class="user-phone">138****8888</text>
+    </view>
+    <view class="user-avatar">👩</view>
+  </view>
+
+  <!-- 宝宝信息卡片 -->
+  <view class="section-title text-bold">宝宝信息</view>
+  <view class="duo-card">
+    <view class="info-row flex-between">
+      <text class="info-label">昵称</text>
+      <text class="info-val">{{babyInfo.name}}</text>
+    </view>
+    <view class="info-row flex-between">
+      <text class="info-label">月龄</text>
+      <text class="info-val">{{babyInfo.months}}个月</text>
+    </view>
+    <view class="info-row flex-between">
+      <text class="info-label">性别</text>
+      <text class="info-val">{{babyInfo.gender === 'boy' ? '男宝' : '女宝'}}</text>
+    </view>
+  </view>
+
+  <!-- 设置列表 -->
+  <view class="section-title text-bold">设置</view>
+  <view class="duo-card settings-list">
+    <view class="setting-item flex-between" bindtap="navToHistory">
+      <view class="setting-left">
+        <text class="setting-icon">📊</text>
+        <text>成长统计</text>
+      </view>
+      <text class="arrow">></text>
+    </view>
+    <view class="setting-item flex-between">
+      <view class="setting-left">
+        <text class="setting-icon">🔔</text>
+        <text>提醒设置</text>
+      </view>
+      <switch checked color="#ff9600"></switch>
+    </view>
+    <view class="setting-item flex-between">
+      <view class="setting-left">
+        <text class="setting-icon">👨‍👩‍👧</text>
+        <text>家庭成员</text>
+      </view>
+      <text class="arrow">></text>
+    </view>
+  </view>
+
+  <view class="logout-btn duo-card" bindtap="logout">
+    <text class="text-bold" style="color: #f44336;">退出登录</text>
+  </view>
+</view>

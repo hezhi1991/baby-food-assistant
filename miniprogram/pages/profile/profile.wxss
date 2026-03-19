@@ -1,0 +1,82 @@
+.user-header {
+  padding: 40rpx;
+  margin-bottom: 40rpx;
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.user-name {
+  font-size: 40rpx;
+  margin-bottom: 10rpx;
+}
+
+.user-phone {
+  font-size: 24rpx;
+  color: #999;
+}
+
+.user-avatar {
+  font-size: 80rpx;
+}
+
+.section-title {
+  font-size: 32rpx;
+  margin: 40rpx 0 20rpx;
+}
+
+.info-row {
+  padding: 20rpx 0;
+  border-bottom: 2rpx solid #f0f0f0;
+}
+
+.info-row:last-child {
+  border-bottom: none;
+}
+
+.info-label {
+  font-size: 28rpx;
+  color: #666;
+}
+
+.info-val {
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.settings-list {
+  padding: 0 30rpx;
+}
+
+.setting-item {
+  padding: 30rpx 0;
+  border-bottom: 2rpx solid #f0f0f0;
+}
+
+.setting-item:last-child {
+  border-bottom: none;
+}
+
+.setting-left {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  font-size: 28rpx;
+}
+
+.setting-icon {
+  font-size: 36rpx;
+}
+
+.arrow {
+  color: #ccc;
+  font-size: 24rpx;
+}
+
+.logout-btn {
+  margin-top: 60rpx;
+  text-align: center;
+  padding: 30rpx 0;
+}
