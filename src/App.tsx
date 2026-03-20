@@ -2325,7 +2325,10 @@ function AppContent() {
   };
 
   return (
-    <div className="max-w-md mx-auto min-h-screen flex flex-col relative bg-white">
+    <div className="max-w-md mx-auto min-h-screen flex flex-col relative bg-white pt-[env(safe-area-inset-top)]">
+      {/* 顶部状态栏占位 */}
+      <div className="h-[env(safe-area-inset-top)] w-full bg-white fixed top-0 z-[100]" />
+      
       {!isLoggedIn ? (
         <main className="flex-1 overflow-y-auto">
           <AnimatePresence mode="wait">

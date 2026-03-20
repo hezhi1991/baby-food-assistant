@@ -24,6 +24,23 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   app.use(cors());
 
+  // 添加安全头，帮助 Safari 识别安全环境
+  app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    // 强制 HSTS (仅在生产环境)
+    if (process.env.NODE_ENV === 'production') {
+      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+    next();
+  });
+
+  // 健康检查接口
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok" });
+  });
+
   // 初始化数据库文件
   if (!fs.existsSync(DB_FILE)) {
     const initialDB = { 

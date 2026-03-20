@@ -1,11 +1,11 @@
 {
-  "name": "宝宝辅食助手",
-  "short_name": "辅食助手",
-  "description": "记录宝宝辅食、过敏及成长过程",
+  "name": "宝宝辅食记录",
+  "short_name": "宝宝辅食",
+  "description": "记录宝宝的每一餐，科学排敏，健康成长。",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#10b981",
+  "theme_color": "#f97316",
   "icons": [
     {
       "src": "https://picsum.photos/seed/baby/192/192",
