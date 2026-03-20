@@ -66,8 +66,8 @@ interface Comment {
 
 interface MealFood {
   foodId: string;
-  quantity: number; // 单位：勺
-  actualQuantity?: number; // 实际摄入：勺
+  quantity: number; // 单位：勺 (五谷为克)
+  actualQuantity?: number; // 实际摄入：勺 (五谷为克)
   isTesting?: boolean; // 是否为本次餐次的排敏测试项
 }
 
@@ -687,7 +687,11 @@ export default function App() {
                       )}
                       {dayFoodTotal > 0 && (
                         <span className="text-[7px] font-black text-green-500 bg-green-50 px-0.5 rounded leading-tight">
-                          {dayFoodTotal}勺
+                          {(() => {
+                            const g = dayMeals.filter(m => m.type === 'food').reduce((sum, m) => sum + m.foods.filter(f => ingredients.find(i => i.id === f.foodId)?.category === 'grain').reduce((s, f) => s + (f.actualQuantity ?? f.quantity), 0), 0);
+                            const o = dayMeals.filter(m => m.type === 'food').reduce((sum, m) => sum + m.foods.filter(f => ingredients.find(i => i.id === f.foodId)?.category !== 'grain').reduce((s, f) => s + (f.actualQuantity ?? f.quantity), 0), 0);
+                            return (g > 0 ? `${g}克` : '') + (g > 0 && o > 0 ? '+' : '') + (o > 0 ? `${o}勺` : '');
+                          })()}
                         </span>
                       )}
                     </div>
@@ -740,7 +744,11 @@ export default function App() {
                     </div>
                     <div className="flex items-center gap-1.5 bg-green-50 px-2.5 py-1 rounded-xl border border-green-100">
                       <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                      <span className="text-[11px] font-black text-green-600">辅食 {dayFood}勺</span>
+                      <span className="text-[11px] font-black text-green-600">辅食 {(() => {
+                        const g = dayMeals.filter(m => m.type === 'food').reduce((sum, m) => sum + m.foods.filter(f => ingredients.find(i => i.id === f.foodId)?.category === 'grain').reduce((s, f) => s + (f.actualQuantity ?? f.quantity), 0), 0);
+                        const o = dayMeals.filter(m => m.type === 'food').reduce((sum, m) => sum + m.foods.filter(f => ingredients.find(i => i.id === f.foodId)?.category !== 'grain').reduce((s, f) => s + (f.actualQuantity ?? f.quantity), 0), 0);
+                        return (g > 0 ? `${g}克` : '') + (g > 0 && o > 0 ? '+' : '') + (o > 0 ? `${o}勺` : '') || '0';
+                      })()}</span>
                     </div>
                     {dayWeight && (
                       <div className="flex items-center gap-1.5 bg-orange-50 px-2.5 py-1 rounded-xl border border-orange-100">
@@ -938,7 +946,7 @@ export default function App() {
                 <YAxis yAxisId="right" orientation="right" hide />
                 <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontWeight: 900 }} />
                 <Bar yAxisId="left" dataKey="milk" fill="#60a5fa" radius={[4, 4, 0, 0]} name="奶量(ml)" />
-                <Bar yAxisId="right" dataKey="food" fill="#4ade80" radius={[4, 4, 0, 0]} name="辅食(勺)" />
+                <Bar yAxisId="right" dataKey="food" fill="#4ade80" radius={[4, 4, 0, 0]} name="辅食(份)" />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -949,55 +957,10 @@ export default function App() {
             </div>
             <div className="flex items-center gap-1.5">
               <div className="w-3 h-3 rounded bg-green-400" />
-              <span className="text-[10px] font-black text-gray-500">辅食 (勺)</span>
+              <span className="text-[10px] font-black text-gray-500">辅食 (份)</span>
             </div>
           </div>
         </section>
-
-        {/* 体重录入弹窗 */}
-        <AnimatePresence>
-          {isAddingWeight && (
-            <>
-              <motion.div 
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                onClick={() => setIsAddingWeight(false)}
-                className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60]"
-              />
-              <motion.div 
-                initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }}
-                className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white rounded-t-[40px] z-[70] p-8 shadow-2xl"
-              >
-                <div className="space-y-6">
-                  <div className="flex justify-between items-center">
-                    <h3 className="text-2xl font-black text-gray-800">记录体重</h3>
-                    <button onClick={() => setIsAddingWeight(false)} className="text-gray-300 hover:text-red-500"><X className="w-6 h-6" /></button>
-                  </div>
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-4 bg-gray-50 p-6 rounded-[24px] border-2 border-gray-100">
-                      <Scale className="w-8 h-8 text-orange-500" />
-                      <input 
-                        type="number" 
-                        step="0.01"
-                        placeholder="宝宝今天的体重 (kg)"
-                        className="flex-1 bg-transparent font-black text-2xl focus:outline-none"
-                        value={newWeight}
-                        onChange={(e) => setNewWeight(e.target.value)}
-                        autoFocus
-                      />
-                      <span className="text-xl font-black text-gray-400">kg</span>
-                    </div>
-                    <button 
-                      onClick={addWeight}
-                      className="w-full py-5 rounded-[24px] font-black text-white duo-btn-orange text-lg tracking-widest"
-                    >
-                      确认记录
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>
       </motion.div>
     );
   };
@@ -1070,6 +1033,20 @@ export default function App() {
                   </div>
                   <span className="text-[10px] font-black text-blue-600 whitespace-nowrap">今日奶量: {totalMilk}ml</span>
                 </div>
+                <div className="mt-1 flex items-center gap-2">
+                  <div className="h-1.5 flex-1 bg-green-50 rounded-full overflow-hidden border border-green-100">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${Math.min(100, (todayMeals.filter(m => m.type === 'food' && m.isCompleted).length / (todayMeals.filter(m => m.type === 'food').length || 1)) * 100)}%` }}
+                      className="h-full bg-green-400"
+                    />
+                  </div>
+                  <span className="text-[10px] font-black text-green-600 whitespace-nowrap">今日辅食: {(() => {
+                    const g = todayMeals.filter(m => m.type === 'food' && m.isCompleted).reduce((sum, m) => sum + m.foods.filter(f => ingredients.find(i => i.id === f.foodId)?.category === 'grain').reduce((s, f) => s + (f.actualQuantity ?? f.quantity), 0), 0);
+                    const o = todayMeals.filter(m => m.type === 'food' && m.isCompleted).reduce((sum, m) => sum + m.foods.filter(f => ingredients.find(i => i.id === f.foodId)?.category !== 'grain').reduce((s, f) => s + (f.actualQuantity ?? f.quantity), 0), 0);
+                    return (g > 0 ? `${g}克` : '') + (g > 0 && o > 0 ? '+' : '') + (o > 0 ? `${o}勺` : '') || '0';
+                  })()}</span>
+                </div>
               </div>
             </div>
 
@@ -1108,18 +1085,30 @@ export default function App() {
                   <CalendarIcon className="w-6 h-6 text-orange-500" />
                   今日计划
                 </h3>
-                <div className="flex gap-1.5">
-                  {[0, 1, 2, 3, 4, 5, 6].map(i => (
-                    <div key={i} className={`w-2.5 h-2.5 rounded-full ${i === 0 ? 'bg-orange-500' : 'bg-gray-200'}`} />
-                  ))}
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => { 
+                      setSelectedDateForPlan(todayStr); 
+                      setEditingMealId(null); 
+                      setAddMealStep(1); 
+                      setIsAddingMeal(true); 
+                    }}
+                    className="duo-btn-orange w-8 h-8 flex items-center justify-center p-0 rounded-lg"
+                  >
+                    <Plus className="w-5 h-5" />
+                  </button>
+                  <div className="flex gap-1.5">
+                    {[0, 1, 2, 3, 4, 5, 6].map(i => (
+                      <div key={i} className={`w-2.5 h-2.5 rounded-full ${i === 0 ? 'bg-orange-500' : 'bg-gray-200'}`} />
+                    ))}
+                  </div>
                 </div>
               </div>
               
               <div className="space-y-4">
-                {meals.filter(m => m.date === `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`).map(meal => (
+                {meals.filter(m => m.date === todayStr).map(meal => (
                   <div 
                     key={meal.id} 
-                    onClick={() => { setSelectedMealId(meal.id); setActivePage('meal-detail'); }}
                     className={`duo-card p-5 flex flex-col gap-3 transition-all relative overflow-hidden ${meal.isCompleted ? 'bg-green-50/30 border-green-200 border-bottom-width-4' : 'bg-white'}`}
                     style={meal.isCompleted ? { borderBottomColor: '#46a302', borderBottomWidth: '4px' } : {}}
                   >
@@ -1129,73 +1118,96 @@ export default function App() {
                       </div>
                     )}
                     <div className="flex items-center gap-5 relative z-10">
-                      <div className="flex flex-col items-center w-14">
-                        <div className={`text-lg font-black ${meal.isCompleted ? 'text-green-600' : 'text-gray-800'}`}>{meal.time}</div>
-                        <div className="text-[10px] font-black text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md mt-1 uppercase tracking-tighter">
-                          第{getMealOrder(meal.id, todayStr, meals)}餐
+                      <div className="flex-1 flex items-center gap-5 cursor-pointer" onClick={() => { setSelectedMealId(meal.id); setActivePage('meal-detail'); }}>
+                        <div className="flex flex-col items-center w-14">
+                          <div className={`text-lg font-black ${meal.isCompleted ? 'text-green-600' : 'text-gray-800'}`}>{meal.time}</div>
+                          <div className="text-[10px] font-black text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md mt-1 uppercase tracking-tighter">
+                            第{getMealOrder(meal.id, todayStr, meals)}餐
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${meal.type === 'milk' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'}`}>
-                            {meal.type === 'milk' ? '奶类' : '辅食'}
-                          </span>
-                          {meal.isCompleted && (
-                            <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-green-500 text-white">
-                              已完成
-                            </span>
-                          )}
-                        </div>
-                        <div className={`text-lg font-black flex flex-col leading-tight ${meal.isCompleted ? 'text-green-900' : 'text-gray-800'}`}>
-                          <span>
-                            {meal.type === 'milk' 
-                              ? `${meal.milkType === 'breast' ? '母乳' : '配方奶'}`
-                              : (meal.foods.length > 0 
-                                  ? meal.foods.map((f, idx) => {
-                                      const ing = ingredients.find(i => i.id === f.foodId);
-                                      const isTesting = f.isTesting;
-                                      return (
-                                        <React.Fragment key={f.foodId}>
-                                          {idx > 0 && ' + '}
-                                          <span className={isTesting ? 'text-orange-500 bg-orange-50 px-1 rounded-md border border-orange-200' : ''}>
-                                            {ing?.name || '未知食材'}
-                                            {isTesting && (
-                                              <span className="text-[8px] ml-0.5 align-top flex flex-col items-center inline-flex">
-                                                <span className="leading-none">测</span>
-                                                <span className="text-[6px] leading-none mt-0.5">D{f.quantity}</span>
-                                              </span>
-                                            )}
-                                          </span>
-                                        </React.Fragment>
-                                      );
-                                    })
-                                  : '待添加食材')}
-                          </span>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[10px] font-bold opacity-40 uppercase tracking-wider">
-                              {meal.type === 'milk'
-                                ? `计划 ${meal.milkVolume}ml`
-                                : meal.foods.length > 0 ? `计划 ${meal.foods.reduce((sum, f) => sum + f.quantity, 0)}勺` : ''}
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${meal.type === 'milk' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'}`}>
+                              {meal.type === 'milk' ? '奶类' : '辅食'}
                             </span>
                             {meal.isCompleted && (
-                              <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${
-                                meal.type === 'milk' 
-                                  ? (meal.actualMilkVolume !== undefined && meal.actualMilkVolume < (meal.milkVolume || 0) ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600')
-                                  : (meal.foods.some(f => f.actualQuantity !== undefined && f.actualQuantity < f.quantity) ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600')
-                              }`}>
-                                {meal.type === 'milk'
-                                  ? `实摄 ${meal.actualMilkVolume ?? meal.milkVolume}ml`
-                                  : `实摄 ${meal.foods.reduce((sum, f) => sum + (f.actualQuantity ?? f.quantity), 0)}勺`}
+                              <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-green-500 text-white">
+                                已完成
                               </span>
                             )}
                           </div>
-                        </div>
-                        <div className={`text-xs font-bold ${meal.isCompleted ? 'text-green-600/70' : 'text-gray-500'} flex items-center gap-3 mt-2`}>
-                          <span className="flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded-full"><Plus className="w-3 h-3" />{meal.generatedBy}</span>
-                          {meal.isCompleted && <span className="flex items-center gap-1 bg-green-100 px-2 py-0.5 rounded-full"><CheckCircle2 className="w-3 h-3" />{meal.completedBy}</span>}
+                          <div className={`text-lg font-black flex flex-col leading-tight ${meal.isCompleted ? 'text-green-900' : 'text-gray-800'}`}>
+                            <span>
+                              {meal.type === 'milk' 
+                                ? `${meal.milkType === 'breast' ? '母乳' : '配方奶'}`
+                                : (meal.foods.length > 0 
+                                    ? meal.foods.map((f, idx) => {
+                                        const ing = ingredients.find(i => i.id === f.foodId);
+                                        const isTesting = f.isTesting;
+                                        return (
+                                          <React.Fragment key={f.foodId}>
+                                            {idx > 0 && ' + '}
+                                            <span className={isTesting ? 'text-orange-500 bg-orange-50 px-1 rounded-md border border-orange-200' : ''}>
+                                              {ing?.name || '未知食材'}
+                                              {isTesting && (
+                                                <span className="text-[8px] ml-0.5 align-top flex flex-col items-center inline-flex">
+                                                  <span className="leading-none">测</span>
+                                                  <span className="text-[6px] leading-none mt-0.5">D{f.quantity}</span>
+                                                </span>
+                                              )}
+                                            </span>
+                                          </React.Fragment>
+                                        );
+                                      })
+                                    : '待添加食材')}
+                            </span>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-[10px] font-bold opacity-40 uppercase tracking-wider">
+                                {meal.type === 'milk'
+                                  ? `计划 ${meal.milkVolume}ml`
+                                  : meal.foods.length > 0 ? `计划 ${(() => {
+                                      const g = meal.foods.filter(f => ingredients.find(i => i.id === f.foodId)?.category === 'grain').reduce((s, f) => s + f.quantity, 0);
+                                      const o = meal.foods.filter(f => ingredients.find(i => i.id === f.foodId)?.category !== 'grain').reduce((s, f) => s + f.quantity, 0);
+                                      return (g > 0 ? `${g}克` : '') + (g > 0 && o > 0 ? '+' : '') + (o > 0 ? `${o}勺` : '');
+                                    })()}` : ''}
+                              </span>
+                              {meal.isCompleted && (
+                                <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${
+                                  meal.type === 'milk' 
+                                    ? (meal.actualMilkVolume !== undefined && meal.actualMilkVolume < (meal.milkVolume || 0) ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600')
+                                    : (meal.foods.some(f => f.actualQuantity !== undefined && f.actualQuantity < f.quantity) ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600')
+                                }`}>
+                                  {meal.type === 'milk'
+                                    ? `实摄 ${meal.actualMilkVolume ?? meal.milkVolume}ml`
+                                    : `实摄 ${(() => {
+                                        const g = meal.foods.filter(f => ingredients.find(i => i.id === f.foodId)?.category === 'grain').reduce((s, f) => s + (f.actualQuantity ?? f.quantity), 0);
+                                        const o = meal.foods.filter(f => ingredients.find(i => i.id === f.foodId)?.category !== 'grain').reduce((s, f) => s + (f.actualQuantity ?? f.quantity), 0);
+                                        return (g > 0 ? `${g}克` : '') + (g > 0 && o > 0 ? '+' : '') + (o > 0 ? `${o}勺` : '');
+                                      })()}`}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className={`text-xs font-bold ${meal.isCompleted ? 'text-green-600/70' : 'text-gray-500'} flex items-center gap-3 mt-2`}>
+                            <span className="flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded-full"><Plus className="w-3 h-3" />{meal.generatedBy}</span>
+                            {meal.isCompleted && <span className="flex items-center gap-1 bg-green-100 px-2 py-0.5 rounded-full"><CheckCircle2 className="w-3 h-3" />{meal.completedBy}</span>}
+                          </div>
                         </div>
                       </div>
-                      <ChevronRight className={`w-5 h-5 ${meal.isCompleted ? 'text-green-400' : 'text-gray-300'}`} />
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); openEditMeal(meal); }} 
+                          className="w-8 h-8 flex items-center justify-center text-gray-300 hover:text-orange-500 transition-colors bg-gray-50 rounded-lg border-2 border-gray-100"
+                        >
+                          <Settings className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); deleteMeal(meal.id); }} 
+                          className="w-8 h-8 flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors bg-gray-50 rounded-lg border-2 border-gray-100"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                     
                     {/* 首页照片展示 */}
@@ -1412,44 +1424,46 @@ export default function App() {
                                     <React.Fragment key={f.foodId}>
                                       {idx > 0 && ' + '}
                                       <span className={isTesting ? 'text-orange-500 bg-orange-50 px-1 rounded-md border border-orange-200' : ''}>
-                                        {ing?.name || '未知食材'}
-                                        {isTesting && (
-                                          <span className="text-[8px] ml-0.5 align-top flex flex-col items-center inline-flex">
-                                            <span className="leading-none">测</span>
-                                            <span className="text-[6px] leading-none mt-0.5">D{f.quantity}</span>
-                                          </span>
-                                        )}
+                                        {ing?.name || '未知'}
                                       </span>
                                     </React.Fragment>
                                   );
                                 })
-                              : '待添加食材')}
+                              : <span className="text-gray-300 italic">待添加食材</span>)
+                        }
                       </div>
                     </div>
-
-                    <div className="flex gap-2">
-                      <button onClick={() => openEditMeal(meal)} className="w-10 h-10 flex items-center justify-center text-gray-300 hover:text-orange-500 transition-colors bg-gray-50 rounded-xl border-2 border-gray-100">
-                        <Settings className="w-5 h-5" />
-                      </button>
-                      <button onClick={() => deleteMeal(meal.id)} className="w-10 h-10 flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors bg-gray-50 rounded-xl border-2 border-gray-100">
-                        <X className="w-5 h-5" />
-                      </button>
+                    <div className="flex flex-col items-end gap-2">
+                      {meal.isCompleted ? (
+                        <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center text-green-600">
+                          <CheckCircle2 className="w-5 h-5" />
+                        </div>
+                      ) : (
+                        <div className="w-8 h-8 bg-gray-50 rounded-full flex items-center justify-center text-gray-300">
+                          <Clock className="w-5 h-5" />
+                        </div>
+                      )}
+                      <ChevronRight className="w-5 h-5 text-gray-200" />
                     </div>
                   </motion.div>
                 ))}
                 
                 {meals.filter(m => m.date === selectedDateForPlan).length === 0 && (
                   <motion.div 
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="text-center py-16 px-8 bg-white rounded-[40px] border-4 border-dashed border-gray-100 flex flex-col items-center"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex flex-col items-center justify-center py-10 bg-gray-50 rounded-[32px] border-2 border-dashed border-gray-200"
                   >
-                    <div className="text-6xl mb-6 grayscale opacity-30">🥣</div>
-                    <p className="text-gray-400 font-black text-lg mb-2">今天还没有安排哦~</p>
-                    <p className="text-gray-300 text-xs font-bold mb-8">快为{babyName}规划美味的一天吧！</p>
+                    <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center text-gray-300 mb-4 shadow-sm">
+                      <Plus className="w-8 h-8" />
+                    </div>
+                    <p className="text-gray-400 font-black text-sm mb-4">今天还没有安排餐次哦</p>
                     <button 
-                      onClick={() => { setEditingMealId(null); setAddMealStep(1); setIsAddingMeal(true); }}
-                      className="duo-btn-orange px-10 py-4 text-sm tracking-widest"
+                      onClick={() => {
+                        setNewMealData(prev => ({ ...prev, date: selectedDateForPlan }));
+                        setIsAddingMeal(true);
+                      }}
+                      className="px-6 py-3 duo-btn-orange text-sm"
                     >
                       立即添加
                     </button>
@@ -1457,261 +1471,6 @@ export default function App() {
                 )}
               </div>
             </div>
-
-            {/* 添加餐次弹窗 */}
-            <AnimatePresence>
-              {isAddingMeal && (
-                <>
-                  <motion.div 
-                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                    className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
-                    onClick={() => setIsAddingMeal(false)}
-                  />
-                  <motion.div 
-                    initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-                    className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white rounded-t-[40px] p-8 z-50 shadow-2xl max-h-[90vh] overflow-y-auto border-t-4 border-gray-100"
-                  >
-                    <div className="space-y-8">
-                      <div className="flex justify-between items-center">
-                        <h3 className="text-2xl font-black text-gray-800">{editingMealId ? '编辑餐次' : '添加新餐次'}</h3>
-                        <div className="flex gap-4">
-                          {addMealStep > 1 && (
-                            <button onClick={() => setAddMealStep(prev => prev - 1)} className="text-gray-400 font-black text-sm uppercase tracking-widest hover:text-orange-500">上一步</button>
-                          )}
-                          <button onClick={() => setIsAddingMeal(false)} className="text-gray-300 hover:text-red-500"><X className="w-6 h-6" /></button>
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-6">
-                        {/* Step 1: Type & Time */}
-                        {addMealStep === 1 && (
-                          <div className="space-y-8">
-                            <div className="flex gap-5">
-                              <button 
-                                onClick={() => setNewMealData(prev => ({ ...prev, type: 'milk' }))}
-                                className={`flex-1 p-6 rounded-[32px] border-4 transition-all flex flex-col items-center gap-3 ${newMealData.type === 'milk' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-100 text-gray-400'}`}
-                                style={newMealData.type === 'milk' ? { borderBottomWidth: '8px' } : {}}
-                              >
-                                <div className="text-4xl">🍼</div>
-                                <div className="text-sm font-black uppercase tracking-widest">喂奶</div>
-                              </button>
-                              <button 
-                                onClick={() => setNewMealData(prev => ({ ...prev, type: 'food' }))}
-                                className={`flex-1 p-6 rounded-[32px] border-4 transition-all flex flex-col items-center gap-3 ${newMealData.type === 'food' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-100 text-gray-400'}`}
-                                style={newMealData.type === 'food' ? { borderBottomWidth: '8px' } : {}}
-                              >
-                                <div className="text-4xl">🥣</div>
-                                <div className="text-sm font-black uppercase tracking-widest">辅食</div>
-                              </button>
-                            </div>
-                            <div className="space-y-3">
-                              <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">设定时间</label>
-                              <input 
-                                type="time" 
-                                value={newMealData.time}
-                                onChange={(e) => setNewMealData(prev => ({ ...prev, time: e.target.value }))}
-                                className="w-full p-5 bg-gray-50 rounded-[24px] border-2 border-gray-100 font-black text-xl focus:outline-none focus:border-orange-500 transition-colors"
-                              />
-                            </div>
-                            <button 
-                              onClick={() => setAddMealStep(2)}
-                              className="w-full py-5 rounded-[24px] font-black text-white duo-btn-orange text-lg tracking-widest"
-                            >
-                              下一步
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Milk Flow */}
-                        {newMealData.type === 'milk' && addMealStep === 2 && (
-                          <div className="space-y-8">
-                            <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">选择奶类</label>
-                            <div className="flex gap-5">
-                              <button 
-                                onClick={() => setNewMealData(prev => ({ ...prev, milkType: 'breast' }))}
-                                className={`flex-1 p-6 rounded-[32px] border-4 transition-all font-black uppercase tracking-widest ${newMealData.milkType === 'breast' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-100 text-gray-400'}`}
-                                style={newMealData.milkType === 'breast' ? { borderBottomWidth: '8px' } : {}}
-                              >
-                                母乳
-                              </button>
-                              <button 
-                                onClick={() => setNewMealData(prev => ({ ...prev, milkType: 'formula' }))}
-                                className={`flex-1 p-6 rounded-[32px] border-4 transition-all font-black uppercase tracking-widest ${newMealData.milkType === 'formula' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-100 text-gray-400'}`}
-                                style={newMealData.milkType === 'formula' ? { borderBottomWidth: '8px' } : {}}
-                              >
-                                奶粉
-                              </button>
-                            </div>
-                            {newMealData.milkType && (
-                              <button 
-                                onClick={() => setAddMealStep(3)}
-                                className="w-full py-5 rounded-[24px] font-black text-white duo-btn-orange text-lg tracking-widest"
-                              >
-                                下一步
-                              </button>
-                            )}
-                          </div>
-                        )}
-
-                        {newMealData.type === 'milk' && addMealStep === 3 && (
-                          <div className="space-y-8">
-                            <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">设定奶量 (ML)</label>
-                            <div className="flex items-center justify-between bg-gray-50 p-6 rounded-[32px] border-2 border-gray-100">
-                              <button 
-                                onClick={() => setNewMealData(prev => ({ ...prev, milkVolume: Math.max(0, (prev.milkVolume || 0) - 30) }))}
-                                className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center text-orange-500 font-black text-3xl border-2 border-gray-100"
-                              >-</button>
-                              <div className="text-4xl font-black text-orange-600 flex items-baseline gap-2">
-                                {newMealData.milkVolume || 0} 
-                                <span className="text-sm text-gray-400 uppercase tracking-widest">ml</span>
-                              </div>
-                              <button 
-                                onClick={() => setNewMealData(prev => ({ ...prev, milkVolume: (prev.milkVolume || 0) + 30 }))}
-                                className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center text-orange-500 font-black text-3xl border-2 border-gray-100"
-                              >+</button>
-                            </div>
-                            <button 
-                              onClick={addMeal}
-                              className="w-full py-5 rounded-[24px] font-black text-white duo-btn-orange text-lg tracking-widest"
-                            >
-                              完成规划
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Food Flow */}
-                        {newMealData.type === 'food' && addMealStep >= 2 && (
-                          <div className="space-y-6">
-                            <div className="flex flex-col gap-1">
-                              <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">
-                                {addMealStep === 2 ? '第一步：选择五谷 (必选)' : 
-                                 addMealStep === 3 ? '第二步：选择肉蛋 (可选)' :
-                                 addMealStep === 4 ? '第三步：选择蔬菜 (可选)' :
-                                 '第四步：选择水果 (可选)'}
-                              </label>
-                              <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden mt-2 border border-gray-50">
-                                <div 
-                                  className="h-full bg-green-500 transition-all duration-700 ease-out shadow-[0_0_10px_rgba(34,197,94,0.3)]" 
-                                  style={{ width: `${(addMealStep - 1) * 25}%` }}
-                                />
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4 max-h-[40vh] overflow-y-auto p-1 no-scrollbar">
-                              {ingredients.filter(ing => {
-                                if (addMealStep === 2) return ing.category === 'grain';
-                                if (addMealStep === 3) return ing.category === 'protein';
-                                if (addMealStep === 4) return ing.category === 'vegetable';
-                                if (addMealStep === 5) return ing.category === 'fruit';
-                                return false;
-                              }).map(ing => {
-                                const mealFood = newMealData.foods.find(f => f.foodId === ing.id);
-                                const isSelected = !!mealFood;
-                                const isAllergic = allergicIngredients.includes(ing.id);
-                                const isSafe = safeIngredients.includes(ing.id);
-                                return (
-                                  <div 
-                                    key={ing.id}
-                                    className={`duo-card p-4 flex flex-col gap-3 transition-all relative ${isAllergic ? 'opacity-40 grayscale cursor-not-allowed' : (isSelected ? 'border-orange-500 bg-orange-50' : 'bg-white')}`}
-                                    style={isSelected ? { borderBottomColor: '#f27d26' } : {}}
-                                  >
-                                    {isSafe && (
-                                      <div className="absolute top-2 right-2">
-                                        <CheckCircle2 className="w-4 h-4 text-green-500 fill-green-50" />
-                                      </div>
-                                    )}
-                                    {isAllergic && (
-                                      <div className="absolute top-2 right-2">
-                                        <AlertCircle className="w-4 h-4 text-red-500 fill-red-50" />
-                                      </div>
-                                    )}
-                                    
-                                    <button
-                                      disabled={isAllergic}
-                                      onClick={() => {
-                                        setNewMealData(prev => {
-                                          if (isSelected) {
-                                            return { ...prev, foods: prev.foods.filter(f => f.foodId !== ing.id) };
-                                          } else {
-                                            if (addMealStep === 2) {
-                                              const otherGrains = ingredients.filter(i => i.category === 'grain').map(i => i.id);
-                                              return { 
-                                                ...prev, 
-                                                foods: [...prev.foods.filter(f => !otherGrains.includes(f.foodId)), { foodId: ing.id, quantity: 1 }] 
-                                              };
-                                            }
-                                            return { ...prev, foods: [...prev.foods, { foodId: ing.id, quantity: 1 }] };
-                                          }
-                                        });
-                                      }}
-                                      className="flex items-center gap-3 text-left"
-                                    >
-                                      <span className="text-3xl">{ing.icon}</span>
-                                      <div className="flex flex-col">
-                                        <span className="text-sm font-black text-gray-800 truncate">{ing.name}</span>
-                                        <span className={`text-[10px] font-black ${isSafe ? 'text-green-500' : 'text-gray-400'}`}>
-                                          {isSafe ? '已排敏' : '未尝试'}
-                                        </span>
-                                      </div>
-                                    </button>
-                                    {isSelected && (
-                                      <div className="flex items-center justify-between bg-white/50 p-2 rounded-xl border-2 border-orange-100">
-                                        <button 
-                                          onClick={() => setNewMealData(prev => ({
-                                            ...prev,
-                                            foods: prev.foods.map(f => f.foodId === ing.id ? { ...f, quantity: Math.max(0.5, f.quantity - 0.5) } : f)
-                                          }))}
-                                          className="w-7 h-7 bg-white rounded-lg shadow-sm flex items-center justify-center text-orange-500 font-black"
-                                        >-</button>
-                                        <span className="text-xs font-black w-8 text-center">{mealFood.quantity}</span>
-                                        <button 
-                                          onClick={() => setNewMealData(prev => ({
-                                            ...prev,
-                                            foods: prev.foods.map(f => f.foodId === ing.id ? { ...f, quantity: f.quantity + 0.5 } : f)
-                                          }))}
-                                          className="w-7 h-7 bg-white rounded-lg shadow-sm flex items-center justify-center text-orange-500 font-black"
-                                        >+</button>
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            
-                            <div className="flex gap-4 pt-4">
-                              {addMealStep < 5 ? (
-                                <button 
-                                  onClick={() => {
-                                    if (addMealStep === 2) {
-                                      const hasGrain = newMealData.foods.some(f => ingredients.find(i => i.id === f.foodId)?.category === 'grain');
-                                      if (!hasGrain) {
-                                        alert("请先选择一种五谷哦");
-                                        return;
-                                      }
-                                    }
-                                    setAddMealStep(prev => prev + 1);
-                                  }}
-                                  className="flex-1 py-5 rounded-[24px] font-black text-white duo-btn-orange text-lg tracking-widest"
-                                >
-                                  下一步
-                                </button>
-                              ) : (
-                                <button 
-                                  onClick={addMeal}
-                                  className="flex-1 py-5 rounded-[24px] font-black text-white duo-btn-orange text-lg tracking-widest"
-                                >
-                                  完成规划
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </motion.div>
-                </>
-              )}
-            </AnimatePresence>
           </motion.div>
         );
       }
@@ -1817,7 +1576,7 @@ export default function App() {
                                   </span>
                                 )}
                               </div>
-                              <span className="text-[10px] font-bold text-gray-400">计划份量: {f.quantity} 勺</span>
+                              <span className="text-[10px] font-bold text-gray-400">计划份量: {f.quantity} {ing?.category === 'grain' ? '克' : '勺'}</span>
                             </div>
                             <div className="flex gap-2">
                               <button onClick={(e) => { e.stopPropagation(); toggleAllergy(f.foodId); }} className="hover:scale-110 transition-transform">
@@ -1834,14 +1593,28 @@ export default function App() {
                             <div className="flex items-center gap-3">
                               <button 
                                 onClick={() => updateMeal(meal.id, { 
-                                  foods: meal.foods.map(food => food.foodId === f.foodId ? { ...food, actualQuantity: Math.max(0, (food.actualQuantity ?? food.quantity) - 0.5) } : food) 
+                                  foods: meal.foods.map(food => {
+                                    if (food.foodId === f.foodId) {
+                                      const isGrain = ing?.category === 'grain';
+                                      const step = isGrain ? 2.5 : 0.5;
+                                      return { ...food, actualQuantity: Math.max(0, (food.actualQuantity ?? food.quantity) - step) };
+                                    }
+                                    return food;
+                                  }) 
                                 })}
                                 className="w-7 h-7 flex items-center justify-center bg-gray-100 rounded-lg text-gray-600 font-black"
                               >-</button>
-                              <span className="text-sm font-black w-10 text-center text-gray-800">{f.actualQuantity ?? f.quantity}勺</span>
+                              <span className="text-sm font-black w-12 text-center text-gray-800">{f.actualQuantity ?? f.quantity}{ing?.category === 'grain' ? '克' : '勺'}</span>
                               <button 
                                 onClick={() => updateMeal(meal.id, { 
-                                  foods: meal.foods.map(food => food.foodId === f.foodId ? { ...food, actualQuantity: (food.actualQuantity ?? food.quantity) + 0.5 } : food) 
+                                  foods: meal.foods.map(food => {
+                                    if (food.foodId === f.foodId) {
+                                      const isGrain = ing?.category === 'grain';
+                                      const step = isGrain ? 2.5 : 0.5;
+                                      return { ...food, actualQuantity: (food.actualQuantity ?? food.quantity) + step };
+                                    }
+                                    return food;
+                                  }) 
                                 })}
                                 className="w-7 h-7 flex items-center justify-center bg-gray-100 rounded-lg text-gray-600 font-black"
                               >+</button>
@@ -2033,103 +1806,6 @@ export default function App() {
                 );
               })}
             </div>
-
-            {/* 新增食材弹窗 */}
-            <AnimatePresence>
-              {isAddingIngredient && (
-                <>
-                  <motion.div 
-                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                    className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
-                    onClick={() => setIsAddingIngredient(false)}
-                  />
-                  <motion.div 
-                    initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-                    className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white rounded-t-[40px] p-8 z-50 shadow-2xl max-h-[90vh] overflow-y-auto border-t-4 border-gray-100"
-                  >
-                    <div className="space-y-8">
-                      <div className="flex justify-between items-center">
-                        <h3 className="text-2xl font-black text-gray-800">录入新食材</h3>
-                        <button onClick={() => setIsAddingIngredient(false)} className="text-gray-300 hover:text-red-500"><X className="w-6 h-6" /></button>
-                      </div>
-                      
-                      <div className="space-y-6">
-                        <div className="space-y-3">
-                          <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">食材名称</label>
-                          <input 
-                            type="text" 
-                            placeholder="如：南瓜"
-                            className="w-full p-5 bg-gray-50 rounded-[24px] border-2 border-gray-100 font-black text-lg focus:outline-none focus:border-orange-500 transition-colors"
-                            value={newIngredientData.name || ''}
-                            onChange={(e) => setNewIngredientData(prev => ({ ...prev, name: e.target.value }))}
-                          />
-                        </div>
-
-                        <div className="space-y-3">
-                          <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">食材分类</label>
-                          <div className="grid grid-cols-2 gap-4">
-                            {[
-                              { id: 'vegetable', label: '蔬菜', icon: '🥦' },
-                              { id: 'fruit', label: '水果', icon: '🍎' },
-                              { id: 'grain', label: '五谷', icon: '🌾' },
-                              { id: 'protein', label: '肉蛋', icon: '🍗' },
-                            ].map(cat => (
-                              <button
-                                key={cat.id}
-                                onClick={() => setNewIngredientData(prev => ({ ...prev, category: cat.id as any }))}
-                                className={`p-4 rounded-[24px] border-4 transition-all flex items-center gap-3 ${newIngredientData.category === cat.id ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-100 text-gray-400'}`}
-                                style={newIngredientData.category === cat.id ? { borderBottomWidth: '8px' } : {}}
-                              >
-                                <span className="text-2xl">{cat.icon}</span>
-                                <span className="font-black text-sm uppercase tracking-widest">{cat.label}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-6">
-                          <div className="space-y-3">
-                            <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">图标 (Emoji)</label>
-                            <input 
-                              type="text" 
-                              placeholder="🎃"
-                              className="w-full p-5 bg-gray-50 rounded-[24px] border-2 border-gray-100 font-black text-center text-2xl focus:outline-none focus:border-orange-500 transition-colors"
-                              value={newIngredientData.icon || ''}
-                              onChange={(e) => setNewIngredientData(prev => ({ ...prev, icon: e.target.value }))}
-                            />
-                          </div>
-                          <div className="space-y-3">
-                            <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">月龄建议</label>
-                            <div className="flex items-center justify-between bg-gray-50 p-5 rounded-[24px] border-2 border-gray-100">
-                              <button onClick={() => setNewIngredientData(prev => ({ ...prev, minAge: Math.max(4, (prev.minAge || 6) - 1) }))} className="text-orange-500 font-black text-xl">-</button>
-                              <span className="font-black text-lg">{newIngredientData.minAge || 6}M</span>
-                              <button onClick={() => setNewIngredientData(prev => ({ ...prev, minAge: (prev.minAge || 6) + 1 }))} className="text-orange-500 font-black text-xl">+</button>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="space-y-3">
-                          <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">喂养贴士</label>
-                          <textarea 
-                            placeholder="如：蒸熟磨泥，适合初期尝试"
-                            className="w-full p-5 bg-gray-50 rounded-[24px] border-2 border-gray-100 font-black text-sm focus:outline-none focus:border-orange-500 transition-colors h-24 resize-none"
-                            value={newIngredientData.tips || ''}
-                            onChange={(e) => setNewIngredientData(prev => ({ ...prev, tips: e.target.value }))}
-                          />
-                        </div>
-
-                        <button 
-                          onClick={addIngredient}
-                          className="w-full py-5 rounded-[24px] font-black text-white duo-btn-orange text-lg tracking-widest"
-                        >
-                          确认录入
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
-                </>
-              )}
-            </AnimatePresence>
           </motion.div>
         );
       case 'history':
@@ -2478,8 +2154,15 @@ export default function App() {
       {/* 宝宝资料编辑弹窗 */}
       <AnimatePresence>
         {isEditingBabyProfile && (
-          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm">
+          <motion.div 
+            key="baby-profile-modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm"
+          >
             <motion.div 
+              key="baby-profile-modal-content"
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
@@ -2566,7 +2249,410 @@ export default function App() {
                 </button>
               </div>
             </motion.div>
-          </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 全局弹窗组件 */}
+      <AnimatePresence>
+        {/* 体重录入弹窗 */}
+        {isAddingWeight && (
+          <motion.div 
+            key="weight-modal-overlay"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => setIsAddingWeight(false)}
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-end justify-center"
+          >
+            <motion.div 
+              key="weight-modal-content"
+              initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }}
+              className="w-full max-w-md bg-white rounded-t-[40px] p-8 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-2xl font-black text-gray-800">记录体重</h3>
+                  <button onClick={() => setIsAddingWeight(false)} className="text-gray-300 hover:text-red-500"><X className="w-6 h-6" /></button>
+                </div>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-4 bg-gray-50 p-6 rounded-[24px] border-2 border-gray-100">
+                    <Scale className="w-8 h-8 text-orange-500" />
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      placeholder="宝宝今天的体重 (kg)"
+                      className="flex-1 bg-transparent font-black text-2xl focus:outline-none"
+                      value={newWeight}
+                      onChange={(e) => setNewWeight(e.target.value)}
+                      autoFocus
+                    />
+                    <span className="text-xl font-black text-gray-400">kg</span>
+                  </div>
+                  <button 
+                    onClick={addWeight}
+                    className="w-full py-5 rounded-[24px] font-black text-white duo-btn-orange text-lg tracking-widest"
+                  >
+                    确认记录
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* 添加餐次弹窗 */}
+        {isAddingMeal && (
+          <motion.div 
+            key="meal-modal-overlay"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[100] flex items-end justify-center"
+            onClick={() => setIsAddingMeal(false)}
+          >
+            <motion.div 
+              key="meal-modal-content"
+              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              className="w-full max-w-md bg-white rounded-t-[40px] p-8 shadow-2xl max-h-[90vh] overflow-y-auto border-t-4 border-gray-100"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="space-y-8">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-2xl font-black text-gray-800">{editingMealId ? '编辑餐次' : '添加新餐次'}</h3>
+                  <div className="flex gap-4">
+                    {addMealStep > 1 && (
+                      <button onClick={() => setAddMealStep(prev => prev - 1)} className="text-gray-400 font-black text-sm uppercase tracking-widest hover:text-orange-500">上一步</button>
+                    )}
+                    <button onClick={() => setIsAddingMeal(false)} className="text-gray-300 hover:text-red-500"><X className="w-6 h-6" /></button>
+                  </div>
+                </div>
+                
+                <div className="space-y-6">
+                  {/* Step 1: Type & Time */}
+                  {addMealStep === 1 && (
+                    <div className="space-y-8">
+                      <div className="flex gap-5">
+                        <button 
+                          onClick={() => setNewMealData(prev => ({ ...prev, type: 'milk' }))}
+                          className={`flex-1 p-6 rounded-[32px] border-4 transition-all flex flex-col items-center gap-3 ${newMealData.type === 'milk' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-100 text-gray-400'}`}
+                          style={newMealData.type === 'milk' ? { borderBottomWidth: '8px' } : {}}
+                        >
+                          <div className="text-4xl">🍼</div>
+                          <div className="text-sm font-black uppercase tracking-widest">喂奶</div>
+                        </button>
+                        <button 
+                          onClick={() => setNewMealData(prev => ({ ...prev, type: 'food' }))}
+                          className={`flex-1 p-6 rounded-[32px] border-4 transition-all flex flex-col items-center gap-3 ${newMealData.type === 'food' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-100 text-gray-400'}`}
+                          style={newMealData.type === 'food' ? { borderBottomWidth: '8px' } : {}}
+                        >
+                          <div className="text-4xl">🥣</div>
+                          <div className="text-sm font-black uppercase tracking-widest">辅食</div>
+                        </button>
+                      </div>
+                      <div className="space-y-3">
+                        <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">设定时间</label>
+                        <input 
+                          type="time" 
+                          value={newMealData.time}
+                          onChange={(e) => setNewMealData(prev => ({ ...prev, time: e.target.value }))}
+                          className="w-full p-5 bg-gray-50 rounded-[24px] border-2 border-gray-100 font-black text-xl focus:outline-none focus:border-orange-500 transition-colors"
+                        />
+                      </div>
+                      <button 
+                        onClick={() => setAddMealStep(2)}
+                        className="w-full py-5 rounded-[24px] font-black text-white duo-btn-orange text-lg tracking-widest"
+                      >
+                        下一步
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Milk Flow */}
+                  {newMealData.type === 'milk' && addMealStep === 2 && (
+                    <div className="space-y-8">
+                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">选择奶类</label>
+                      <div className="flex gap-5">
+                        <button 
+                          onClick={() => setNewMealData(prev => ({ ...prev, milkType: 'breast' }))}
+                          className={`flex-1 p-6 rounded-[32px] border-4 transition-all font-black uppercase tracking-widest ${newMealData.milkType === 'breast' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-100 text-gray-400'}`}
+                          style={newMealData.milkType === 'breast' ? { borderBottomWidth: '8px' } : {}}
+                        >
+                          母乳
+                        </button>
+                        <button 
+                          onClick={() => setNewMealData(prev => ({ ...prev, milkType: 'formula' }))}
+                          className={`flex-1 p-6 rounded-[32px] border-4 transition-all font-black uppercase tracking-widest ${newMealData.milkType === 'formula' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-100 text-gray-400'}`}
+                          style={newMealData.milkType === 'formula' ? { borderBottomWidth: '8px' } : {}}
+                        >
+                          奶粉
+                        </button>
+                      </div>
+                      {newMealData.milkType && (
+                        <button 
+                          onClick={() => setAddMealStep(3)}
+                          className="w-full py-5 rounded-[24px] font-black text-white duo-btn-orange text-lg tracking-widest"
+                        >
+                          下一步
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {newMealData.type === 'milk' && addMealStep === 3 && (
+                    <div className="space-y-8">
+                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">设定奶量 (ML)</label>
+                      <div className="flex items-center justify-between bg-gray-50 p-6 rounded-[32px] border-2 border-gray-100">
+                        <button 
+                          onClick={() => setNewMealData(prev => ({ ...prev, milkVolume: Math.max(0, (prev.milkVolume || 0) - 30) }))}
+                          className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center text-orange-500 font-black text-3xl border-2 border-gray-100"
+                        >-</button>
+                        <div className="text-4xl font-black text-orange-600 flex items-baseline gap-2">
+                          {newMealData.milkVolume || 0} 
+                          <span className="text-sm text-gray-400 uppercase tracking-widest">ml</span>
+                        </div>
+                        <button 
+                          onClick={() => setNewMealData(prev => ({ ...prev, milkVolume: (prev.milkVolume || 0) + 30 }))}
+                          className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center text-orange-500 font-black text-3xl border-2 border-gray-100"
+                        >+</button>
+                      </div>
+                      <button 
+                        onClick={addMeal}
+                        className="w-full py-5 rounded-[24px] font-black text-white duo-btn-orange text-lg tracking-widest"
+                      >
+                        完成规划
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Food Flow */}
+                  {newMealData.type === 'food' && addMealStep >= 2 && (
+                    <div className="space-y-6">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">
+                          {addMealStep === 2 ? '第一步：选择五谷 (必选)' : 
+                           addMealStep === 3 ? '第二步：选择肉蛋 (可选)' :
+                           addMealStep === 4 ? '第三步：选择蔬菜 (可选)' :
+                           '第四步：选择水果 (可选)'}
+                        </label>
+                        <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden mt-2 border border-gray-50">
+                          <div 
+                            className="h-full bg-green-500 transition-all duration-700 ease-out shadow-[0_0_10px_rgba(34,197,94,0.3)]" 
+                            style={{ width: `${(addMealStep - 1) * 25}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 max-h-[40vh] overflow-y-auto p-1 no-scrollbar">
+                        {ingredients.filter(ing => {
+                          if (addMealStep === 2) return ing.category === 'grain';
+                          if (addMealStep === 3) return ing.category === 'protein';
+                          if (addMealStep === 4) return ing.category === 'vegetable';
+                          if (addMealStep === 5) return ing.category === 'fruit';
+                          return false;
+                        }).map(ing => {
+                          const mealFood = newMealData.foods.find(f => f.foodId === ing.id);
+                          const isSelected = !!mealFood;
+                          const isAllergic = allergicIngredients.includes(ing.id);
+                          const isSafe = safeIngredients.includes(ing.id);
+                          return (
+                            <div 
+                              key={ing.id}
+                              className={`duo-card p-4 flex flex-col gap-3 transition-all relative ${isAllergic ? 'opacity-40 grayscale cursor-not-allowed' : (isSelected ? 'border-orange-500 bg-orange-50' : 'bg-white')}`}
+                              style={isSelected ? { borderBottomColor: '#f27d26' } : {}}
+                            >
+                              {isAllergic && (
+                                <div className="absolute top-2 right-2">
+                                  <AlertCircle className="w-4 h-4 text-red-500 fill-red-50" />
+                                </div>
+                              )}
+                              
+                              <button
+                                disabled={isAllergic}
+                                onClick={() => {
+                                  setNewMealData(prev => {
+                                    if (isSelected) {
+                                      return { ...prev, foods: prev.foods.filter(f => f.foodId !== ing.id) };
+                                    } else {
+                                      if (addMealStep === 2) {
+                                        const otherGrains = ingredients.filter(i => i.category === 'grain').map(i => i.id);
+                                        return { 
+                                          ...prev, 
+                                          foods: [...prev.foods.filter(f => !otherGrains.includes(f.foodId)), { foodId: ing.id, quantity: 2.5 }] 
+                                        };
+                                      }
+                                      const isGrain = ing.category === 'grain';
+                                      return { ...prev, foods: [...prev.foods, { foodId: ing.id, quantity: isGrain ? 2.5 : 1 }] };
+                                    }
+                                  });
+                                }}
+                                className="flex items-center gap-3 text-left"
+                              >
+                                <span className="text-3xl">{ing.icon}</span>
+                                <div className="flex flex-col">
+                                  <span className="text-sm font-black text-gray-800 truncate">{ing.name}</span>
+                                  <span className={`text-[10px] font-black ${isSafe ? 'text-green-500' : 'text-gray-400'}`}>
+                                    {isSafe ? '已排敏' : '未尝试'}
+                                  </span>
+                                </div>
+                              </button>
+                              {isSelected && (
+                                <div className="flex items-center justify-between bg-white/50 p-2 rounded-xl border-2 border-orange-100">
+                                  <button 
+                                    onClick={() => setNewMealData(prev => ({
+                                      ...prev,
+                                      foods: prev.foods.map(f => {
+                                        if (f.foodId === ing.id) {
+                                          const isGrain = ing.category === 'grain';
+                                          const step = isGrain ? 2.5 : 0.5;
+                                          return { ...f, quantity: Math.max(step, f.quantity - step) };
+                                        }
+                                        return f;
+                                      })
+                                    }))}
+                                    className="w-7 h-7 bg-white rounded-lg shadow-sm flex items-center justify-center text-orange-500 font-black"
+                                  >-</button>
+                                  <span className="text-xs font-black w-10 text-center">{mealFood.quantity}{ing.category === 'grain' ? '克' : '勺'}</span>
+                                  <button 
+                                    onClick={() => setNewMealData(prev => ({
+                                      ...prev,
+                                      foods: prev.foods.map(f => {
+                                        if (f.foodId === ing.id) {
+                                          const isGrain = ing.category === 'grain';
+                                          const step = isGrain ? 2.5 : 0.5;
+                                          return { ...f, quantity: f.quantity + step };
+                                        }
+                                        return f;
+                                      })
+                                    }))}
+                                    className="w-7 h-7 bg-white rounded-lg shadow-sm flex items-center justify-center text-orange-500 font-black"
+                                  >+</button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      
+                      <div className="flex gap-4 pt-4">
+                        {addMealStep < 5 ? (
+                          <button 
+                            onClick={() => {
+                              if (addMealStep === 2) {
+                                const hasGrain = newMealData.foods.some(f => ingredients.find(i => i.id === f.foodId)?.category === 'grain');
+                                if (!hasGrain) {
+                                  alert("请先选择一种五谷哦");
+                                  return;
+                                }
+                              }
+                              setAddMealStep(prev => prev + 1);
+                            }}
+                            className="flex-1 py-5 rounded-[24px] font-black text-white duo-btn-orange text-lg tracking-widest"
+                          >
+                            下一步
+                          </button>
+                        ) : (
+                          <button 
+                            onClick={addMeal}
+                            className="flex-1 py-5 rounded-[24px] font-black text-white duo-btn-orange text-lg tracking-widest"
+                          >
+                            完成规划
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* 新增食材弹窗 */}
+        {isAddingIngredient && (
+          <motion.div 
+            key="ingredient-modal-overlay"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[100] flex items-end justify-center"
+            onClick={() => setIsAddingIngredient(false)}
+          >
+            <motion.div 
+              key="ingredient-modal-content"
+              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              className="w-full max-w-md bg-white rounded-t-[40px] p-8 shadow-2xl max-h-[90vh] overflow-y-auto border-t-4 border-gray-100"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="space-y-8">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-2xl font-black text-gray-800">录入新食材</h3>
+                  <button onClick={() => setIsAddingIngredient(false)} className="text-gray-300 hover:text-red-500"><X className="w-6 h-6" /></button>
+                </div>
+                
+                <div className="space-y-6">
+                  <div className="space-y-3">
+                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">食材名称</label>
+                    <input 
+                      type="text" 
+                      placeholder="如：南瓜"
+                      className="w-full p-5 bg-gray-50 rounded-[24px] border-2 border-gray-100 font-black text-lg focus:outline-none focus:border-orange-500 transition-colors"
+                      value={newIngredientData.name || ''}
+                      onChange={(e) => setNewIngredientData(prev => ({ ...prev, name: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">食材分类</label>
+                    <div className="grid grid-cols-2 gap-4">
+                      {[
+                        { id: 'vegetable', label: '蔬菜', icon: '🥦' },
+                        { id: 'fruit', label: '水果', icon: '🍎' },
+                        { id: 'grain', label: '五谷', icon: '🌾' },
+                        { id: 'protein', label: '肉蛋', icon: '🥩' }
+                      ].map(cat => (
+                        <button 
+                          key={cat.id}
+                          onClick={() => setNewIngredientData(prev => ({ ...prev, category: cat.id as any }))}
+                          className={`p-4 rounded-2xl border-2 flex items-center gap-3 font-black transition-all ${newIngredientData.category === cat.id ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-100 text-gray-400'}`}
+                        >
+                          <span className="text-xl">{cat.icon}</span>
+                          <span className="text-sm">{cat.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">过敏风险</label>
+                    <div className="flex gap-3">
+                      {['low', 'medium', 'high'].map(risk => (
+                        <button 
+                          key={risk}
+                          onClick={() => setNewIngredientData(prev => ({ ...prev, allergyRisk: risk as any }))}
+                          className={`flex-1 py-3 rounded-xl border-2 font-black text-xs uppercase tracking-widest transition-all ${newIngredientData.allergyRisk === risk ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-100 text-gray-400'}`}
+                        >
+                          {risk === 'low' ? '低' : risk === 'medium' ? '中' : '高'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">喂养贴士</label>
+                    <textarea 
+                      placeholder="如：蒸熟磨泥，口感细腻..."
+                      className="w-full p-5 bg-gray-50 rounded-[24px] border-2 border-gray-100 font-black text-sm focus:outline-none focus:border-orange-500 transition-colors h-32 resize-none"
+                      value={newIngredientData.tips || ''}
+                      onChange={(e) => setNewIngredientData(prev => ({ ...prev, tips: e.target.value }))}
+                    />
+                  </div>
+
+                  <button 
+                    onClick={addIngredient}
+                    className="w-full py-5 rounded-[24px] font-black text-white duo-btn-orange text-lg tracking-widest"
+                  >
+                    确认录入
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 

@@ -27,6 +27,7 @@ body {
   border-bottom-width: 4px;
   border-radius: 16px;
   transition: all 0.1s;
+  cursor: pointer;
 }
 
 .duo-card:active {
@@ -44,6 +45,7 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   transition: all 0.1s;
+  cursor: pointer;
 }
 
 .duo-btn-orange:active {
@@ -61,6 +63,7 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   transition: all 0.1s;
+  cursor: pointer;
 }
 
 .duo-btn-green:active {
@@ -77,6 +80,7 @@ body {
   color: #afafaf;
   font-weight: 800;
   transition: all 0.1s;
+  cursor: pointer;
 }
 
 .duo-btn-gray:active {
