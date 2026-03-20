@@ -54,19 +54,26 @@ async function startServer() {
     fs.writeFileSync(DB_FILE, JSON.stringify(initialDB, null, 2));
   }
 
+  // 内存缓存
+  let memoryDB: any = null;
+
   function readDB() {
+    if (memoryDB) return memoryDB;
     try { 
-      const data = JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
+      const dataStr = fs.readFileSync(DB_FILE, "utf-8");
+      memoryDB = JSON.parse(dataStr || "{}");
+      
       // 确保预设用户始终存在
       let changed = false;
+      if (!memoryDB.users) { memoryDB.users = {}; changed = true; }
       for (const [uname, udata] of Object.entries(PRESET_USERS)) {
-        if (!data.users[uname]) {
-          data.users[uname] = udata;
+        if (!memoryDB.users[uname]) {
+          memoryDB.users[uname] = udata;
           changed = true;
         }
       }
-      if (!data.sharedData) {
-        data.sharedData = {
+      if (!memoryDB.sharedData) {
+        memoryDB.sharedData = {
           babyName: "宝宝",
           babyBirthday: "2025-08-07",
           babyPhoto: null,
@@ -78,15 +85,22 @@ async function startServer() {
         };
         changed = true;
       }
-      if (changed) writeDB(data);
-      return data;
+      if (changed) {
+        writeDB(memoryDB);
+      }
+      return memoryDB;
     } 
     catch (e) { 
+      console.error("Read DB Error:", e);
       return { users: { ...PRESET_USERS }, profiles: {}, sharedData: {} }; 
     }
   }
   function writeDB(data: any) {
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+    memoryDB = data;
+    // 异步写入文件，不阻塞主线程
+    fs.writeFile(DB_FILE, JSON.stringify(data, null, 2), (err) => {
+      if (err) console.error("Write DB Error:", err);
+    });
   }
 
   // --- 模拟后端 API 路由 ---

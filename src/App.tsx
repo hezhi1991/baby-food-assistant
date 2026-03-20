@@ -33,39 +33,17 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer,
   BarChart,
   Bar,
-  Legend
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+  LineChart,
+  Line
 } from 'recharts';
-
-// --- Firebase Imports ---
-import { auth, db } from './firebase';
-import { 
-  collection, 
-  doc, 
-  onSnapshot, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc, 
-  getDoc, 
-  query, 
-  where, 
-  addDoc,
-  getDocFromServer
-} from 'firebase/firestore';
-import { 
-  signInWithPopup, 
-  GoogleAuthProvider, 
-  onAuthStateChanged, 
-  signOut 
-} from 'firebase/auth';
 
 // --- Error Handling ---
 enum OperationType {
@@ -100,30 +78,31 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
+      userId: undefined,
+      email: undefined,
+      emailVerified: undefined,
+      isAnonymous: undefined,
+      tenantId: undefined,
+      providerInfo: []
     },
     operationType,
     path
-  }
+  };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
 
-class ErrorBoundary extends React.Component<any, any> {
-  constructor(props: any) {
-    super(props);
-    this.state = { hasError: false, errorInfo: null };
-  }
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  errorInfo: string | null;
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { hasError: false, errorInfo: null };
 
   static getDerivedStateFromError(error: any) {
     return { hasError: true, errorInfo: error.message };
@@ -153,7 +132,7 @@ class ErrorBoundary extends React.Component<any, any> {
       );
     }
 
-    return this.props.children;
+    return (this as any).props.children;
   }
 }
 
@@ -276,14 +255,19 @@ function AppContent() {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [isSaving, setIsSaving] = useState(false); // 新增：保存状态锁
 
   // --- 后端 API 调用 ---
   const fetchSharedData = async () => {
+    if (isSaving) return; // 如果正在保存，跳过本次自动刷新，防止旧数据覆盖新数据
     try {
-      const response = await fetch('/api/get-shared-data');
+      const response = await fetch('/api/get-shared-data', {
+        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+      });
       const result = await response.json();
       if (result.success) {
         const data = result.data;
+        // 只有在非保存状态下才更新
         setBabyName(data.babyName || '宝宝');
         setBabyBirthday(data.babyBirthday || '2025-08-07');
         setBabyPhoto(data.babyPhoto || null);
@@ -325,6 +309,7 @@ function AppContent() {
   };
 
   const saveSharedData = async (data: any) => {
+    setIsSaving(true); // 开启锁定
     try {
       const response = await fetch('/api/save-shared-data', {
         method: 'POST',
@@ -337,6 +322,9 @@ function AppContent() {
       }
     } catch (error) {
       console.error("Error saving shared data:", error);
+    } finally {
+      // 延迟一小会儿解锁，确保服务器数据已落盘
+      setTimeout(() => setIsSaving(false), 1000);
     }
   };
 
@@ -350,20 +338,6 @@ function AppContent() {
       fetchSharedData();
     }
     setIsAuthReady(true);
-  }, []);
-
-  // 验证 Firestore 连接
-  useEffect(() => {
-    async function testConnection() {
-      try {
-        await getDocFromServer(doc(db, 'test', 'connection'));
-      } catch (error) {
-        if(error instanceof Error && error.message.includes('the client is offline')) {
-          console.error("Please check your Firebase configuration. ");
-        }
-      }
-    }
-    testConnection();
   }, []);
 
   const [userRole, setUserRole] = useState<FamilyRole | null>(null);
