@@ -255,23 +255,65 @@ function AppContent() {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [isSaving, setIsSaving] = useState(false); // 新增：保存状态锁
-  const [lastLocalChangeTime, setLastLocalChangeTime] = useState(0); // 记录最后一次本地修改的时间
+  const [isSaving, setIsSaving] = useState(false);
+  const isSavingRef = useRef(false);
+  const [lastLocalChangeTime, setLastLocalChangeTime] = useState(0);
+  const lastLocalChangeTimeRef = useRef(0);
+  const [isEditingBabyProfile, setIsEditingBabyProfile] = useState(false);
+  const isEditingBabyProfileRef = useRef(false);
+
+  const [babyPhoto, setBabyPhoto] = useState<string | null>(null);
+  const [babyName, setBabyName] = useState<string>('宝宝');
+  const [babyBirthday, setBabyBirthday] = useState<string>('2025-08-07');
+  const [userRole, setUserRole] = useState<FamilyRole | null>(null);
+
+  const updateLastLocalChange = () => {
+    const now = Date.now();
+    lastLocalChangeTimeRef.current = now;
+    setLastLocalChangeTime(now);
+    // console.log("本地修改已记录:", now);
+  };
+
+  const updateIsSaving = (val: boolean) => {
+    setIsSaving(val);
+    isSavingRef.current = val;
+  };
+
+  const updateIsEditingBabyProfile = (val: boolean) => {
+    setIsEditingBabyProfile(val);
+    isEditingBabyProfileRef.current = val;
+    if (val) {
+      updateLastLocalChange();
+    }
+  };
 
   // --- 后端 API 调用 ---
   const fetchSharedData = async () => {
-    // 如果正在保存，或者最近 3 秒内有本地修改，跳过本次自动刷新
     const now = Date.now();
-    if (isSaving || (now - lastLocalChangeTime < 3000)) return; 
+    const timeSinceLastChange = now - lastLocalChangeTimeRef.current;
+    
+    // 如果正在保存，或者正在编辑宝宝资料，或者最近 10 秒内有本地修改，跳过本次自动刷新
+    if (isSavingRef.current || isEditingBabyProfileRef.current || (timeSinceLastChange < 10000)) {
+      // console.log("跳过轮询刷新:", { isSaving: isSavingRef.current, isEditing: isEditingBabyProfileRef.current, timeSinceLastChange });
+      return;
+    }
 
     try {
       const response = await fetch('/api/get-shared-data', {
         headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
       });
       const result = await response.json();
+      
+      // 再次检查，防止在请求期间发生了本地修改或进入编辑模式
+      const nowAfter = Date.now();
+      const timeSinceLastChangeAfter = nowAfter - lastLocalChangeTimeRef.current;
+      if (isSavingRef.current || isEditingBabyProfileRef.current || (timeSinceLastChangeAfter < 10000)) {
+        // console.log("请求后跳过更新:", { isSaving: isSavingRef.current, isEditing: isEditingBabyProfileRef.current, timeSinceLastChangeAfter });
+        return;
+      }
+
       if (result.success) {
         const data = result.data;
-        // 只有在非保存状态下才更新
         setBabyName(data.babyName || '宝宝');
         setBabyBirthday(data.babyBirthday || '2025-08-07');
         setBabyPhoto(data.babyPhoto || null);
@@ -313,7 +355,7 @@ function AppContent() {
   };
 
   const saveSharedData = async (overrideData?: any) => {
-    setIsSaving(true); // 开启锁定
+    updateIsSaving(true); // 开启锁定
     try {
       const dataToSave = overrideData || {
         babyName,
@@ -338,7 +380,7 @@ function AppContent() {
       console.error("Error saving shared data:", error);
     } finally {
       // 延迟一小会儿解锁，确保服务器数据已落盘
-      setTimeout(() => setIsSaving(false), 1000);
+      setTimeout(() => updateIsSaving(false), 1000);
     }
   };
 
@@ -354,7 +396,6 @@ function AppContent() {
     setIsAuthReady(true);
   }, []);
 
-  const [userRole, setUserRole] = useState<FamilyRole | null>(null);
   const [activePage, setActivePage] = useState<Page>('home');
   const [selectedMealId, setSelectedMealId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -390,10 +431,6 @@ function AppContent() {
     type: 'food',
     foods: []
   });
-  const [babyPhoto, setBabyPhoto] = useState<string | null>(null);
-  const [babyName, setBabyName] = useState<string>('宝宝');
-  const [babyBirthday, setBabyBirthday] = useState<string>('2025-08-07');
-  const [isEditingBabyProfile, setIsEditingBabyProfile] = useState(false);
 
   // --- 后端数据同步 (替代 Firestore) ---
   useEffect(() => {
@@ -409,7 +446,7 @@ function AppContent() {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [isAuthReady, uid, isSaving, lastLocalChangeTime]);
+  }, [isAuthReady, uid]); // 移除 isSaving 和 lastLocalChangeTime 依赖，靠 Ref 检查最新值
 
   // 监听数据变化并自动保存
   useEffect(() => {
@@ -436,7 +473,7 @@ function AppContent() {
 
   const saveBabyProfile = async (data: { babyName: string, babyBirthday: string, role: FamilyRole, babyPhoto?: string | null }) => {
     if (!uid) return;
-    setLastLocalChangeTime(Date.now());
+    updateLastLocalChange();
     // 更新本地状态以触发自动保存
     setBabyName(data.babyName);
     setBabyBirthday(data.babyBirthday);
@@ -452,7 +489,7 @@ function AppContent() {
       const result = await response.json();
       if (result.success) {
         setLoginStep('login');
-        setIsEditingBabyProfile(false);
+        updateIsEditingBabyProfile(false);
         fetchUserProfile(uid);
         fetchSharedData();
       }
@@ -530,7 +567,7 @@ function AppContent() {
     
     setAllergicIngredients(newAllergic);
     setSafeIngredients(newSafe);
-    setLastLocalChangeTime(Date.now());
+    updateLastLocalChange();
   };
 
   const toggleSafe = (foodId: string) => {
@@ -541,7 +578,7 @@ function AppContent() {
 
     setSafeIngredients(newSafe);
     setAllergicIngredients(newAllergic);
-    setLastLocalChangeTime(Date.now());
+    updateLastLocalChange();
   };
 
   const toggleVitamin = (date: string, type: 'D' | 'AD') => {
@@ -559,7 +596,7 @@ function AppContent() {
           completedBy: userRole || undefined
         }];
       }
-      setLastLocalChangeTime(Date.now());
+      updateLastLocalChange();
       return newVitamins;
     });
   };
@@ -578,7 +615,7 @@ function AppContent() {
         }
         return m;
       });
-      setLastLocalChangeTime(Date.now());
+      updateLastLocalChange();
       return newMeals;
     });
   };
@@ -622,7 +659,7 @@ function AppContent() {
     reader.onloadend = () => {
       const base64String = reader.result as string;
       setBabyPhoto(base64String);
-      setLastLocalChangeTime(Date.now());
+      updateLastLocalChange();
       // 如果已经登录，立即保存到后端
       if (uid) {
         fetch('/api/save-profile', {
@@ -682,7 +719,7 @@ function AppContent() {
       newMeals = [...meals, newMeal].sort((a, b) => a.time.localeCompare(b.time));
     }
     setMeals(newMeals);
-    setLastLocalChangeTime(Date.now());
+    updateLastLocalChange();
     setIsAddingMeal(false);
     setAddMealStep(1);
     setNewMealData({ time: '12:00', type: 'food', foods: [] });
@@ -718,7 +755,7 @@ function AppContent() {
     setIngredients(newIngredients);
     setSafeIngredients(newSafe);
     setAllergicIngredients(newAllergic);
-    setLastLocalChangeTime(Date.now());
+    updateLastLocalChange();
   };
 
   const openEditMeal = (meal: Meal) => {
@@ -2136,7 +2173,7 @@ function AppContent() {
                     }
                   } catch (error) {
                     console.error("登录失败:", error);
-                    alert("服务器连接失败");
+                    alert(`服务器连接失败: ${error instanceof Error ? error.message : '未知错误'}`);
                   }
                 } else {
                   alert('请输入用户名和密码');
@@ -2194,7 +2231,7 @@ function AppContent() {
                 value={babyName === '宝宝' ? '' : babyName}
                 onChange={(e) => {
                   setBabyName(e.target.value);
-                  setLastLocalChangeTime(Date.now());
+                  updateLastLocalChange();
                 }}
                 placeholder="请输入宝宝昵称，如：塔塔"
                 className="w-full px-6 py-5 bg-gray-50 rounded-[24px] border-2 border-gray-100 font-black text-lg focus:outline-none focus:border-orange-500 transition-colors"
@@ -2209,7 +2246,7 @@ function AppContent() {
                 value={babyBirthday}
                 onChange={(e) => {
                   setBabyBirthday(e.target.value);
-                  setLastLocalChangeTime(Date.now());
+                  updateLastLocalChange();
                 }}
                 className="w-full px-6 py-5 bg-gray-50 rounded-[24px] border-2 border-gray-100 font-black text-lg focus:outline-none focus:border-orange-500 transition-colors"
               />
@@ -2301,7 +2338,7 @@ function AppContent() {
       <div className="h-16 flex items-center justify-between px-6 font-black text-sm sticky top-0 bg-white/90 backdrop-blur-md z-30 border-b-2 border-gray-100">
         <div className="flex items-center gap-2.5">
           <button 
-            onClick={() => setIsEditingBabyProfile(true)}
+            onClick={() => updateIsEditingBabyProfile(true)}
             className="flex items-center gap-2.5 group"
           >
             <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center border-2 border-orange-200 group-hover:bg-orange-200 transition-all shadow-sm">
@@ -2392,7 +2429,7 @@ function AppContent() {
               <div className="flex justify-between items-center mb-8">
                 <h3 className="text-2xl font-black text-gray-800">编辑宝宝资料</h3>
                 <button 
-                  onClick={() => setIsEditingBabyProfile(false)}
+                  onClick={() => updateIsEditingBabyProfile(false)}
                   className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-400"
                 >
                   <X className="w-6 h-6" />
@@ -2426,7 +2463,7 @@ function AppContent() {
                     value={babyName}
                     onChange={(e) => {
                       setBabyName(e.target.value);
-                      setLastLocalChangeTime(Date.now());
+                      updateLastLocalChange();
                     }}
                     placeholder="请输入宝宝名字"
                     className="w-full px-6 py-5 bg-gray-50 rounded-[24px] border-2 border-gray-100 font-black text-lg focus:outline-none focus:border-orange-500 transition-colors"
@@ -2441,37 +2478,47 @@ function AppContent() {
                     value={babyBirthday}
                     onChange={(e) => {
                       setBabyBirthday(e.target.value);
-                      setLastLocalChangeTime(Date.now());
+                      updateLastLocalChange();
                     }}
                     className="w-full px-6 py-5 bg-gray-50 rounded-[24px] border-2 border-gray-100 font-black text-lg focus:outline-none focus:border-orange-500 transition-colors"
                   />
                 </div>
 
                 <button 
+                  disabled={isSaving}
                   onClick={async () => {
+                    updateIsSaving(true);
                     try {
                       const response = await fetch('/api/save-profile', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
-                          username, 
+                          username: uid, 
                           babyName, 
                           babyBirthday, 
-                          role: userRole 
+                          role: userRole,
+                          babyPhoto
                         })
                       });
                       const data = await response.json();
                       if (data.success) {
-                        setIsEditingBabyProfile(false);
+                        updateIsEditingBabyProfile(false);
+                        updateIsSaving(false); // 先解锁
+                        // 保存成功后立即刷新一次数据，确保同步
+                        await fetchSharedData();
+                      } else {
+                        alert(data.message || "保存失败");
                       }
                     } catch (error) {
                       console.error("保存资料失败:", error);
                       alert("服务器连接失败");
+                    } finally {
+                      updateIsSaving(false);
                     }
                   }}
-                  className="w-full py-5 duo-btn-orange text-lg mt-4"
+                  className={`w-full py-5 duo-btn-orange text-lg mt-4 ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                  保存修改
+                  {isSaving ? '正在保存...' : '保存修改'}
                 </button>
               </div>
             </motion.div>
@@ -2893,7 +2940,7 @@ function AppContent() {
             const reader = new FileReader();
             reader.onloadend = () => {
               setBabyPhoto(reader.result as string);
-              setLastLocalChangeTime(Date.now());
+              updateLastLocalChange();
             };
             reader.readAsDataURL(file);
           }

@@ -137,16 +137,23 @@ async function startServer() {
 
       const db = readDB();
       
-      // 如果是预设用户，更新共享数据中的宝宝信息
-      if (PRESET_USERS[username]) {
-        db.sharedData.babyName = babyName;
-        db.sharedData.babyBirthday = babyBirthday;
-        if (babyPhoto !== undefined) db.sharedData.babyPhoto = babyPhoto;
-        // 同时也更新用户自己的角色（虽然预设用户角色通常固定）
+      // 统一更新共享数据中的宝宝信息，因为这是一个共享应用
+      if (babyName) db.sharedData.babyName = babyName;
+      if (babyBirthday) db.sharedData.babyBirthday = babyBirthday;
+      if (babyPhoto !== undefined) db.sharedData.babyPhoto = babyPhoto;
+
+      // 更新用户特定的资料
+      if (db.users[username]) {
         db.users[username].role = role;
-      } else {
-        db.profiles[username] = { babyName, babyBirthday, role, babyPhoto, updatedAt: new Date().toISOString() };
       }
+      
+      db.profiles[username] = { 
+        babyName, 
+        babyBirthday, 
+        role, 
+        babyPhoto, 
+        updatedAt: new Date().toISOString() 
+      };
       
       writeDB(db);
       res.json({ success: true, message: "资料保存成功" });
@@ -211,8 +218,9 @@ async function startServer() {
     });
   }
 
-  app.listen(3000, '0.0.0.0', () => {
-      console.log('✅ 带数据库的终极 API 已启动，坚守 3000 端口...');
+  const PORT = process.env.PORT || 3000;
+  app.listen(Number(PORT), '0.0.0.0', () => {
+      console.log(`✅ 服务器已启动，监听端口 ${PORT}...`);
   });
 }
 
