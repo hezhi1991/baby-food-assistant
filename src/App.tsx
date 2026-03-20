@@ -521,14 +521,6 @@ function AppContent() {
     // 移除客户端模拟数据生成，改由后端同步
   }, []);
 
-  useEffect(() => {
-    // 演示：从后端获取初始数据
-    fetch('/api/meals')
-      .then(res => res.json())
-      .then(data => console.log("从后端获取的消息:", data.message))
-      .catch(err => console.error("获取后端数据失败:", err));
-  }, []);
-
   // --- 业务逻辑 ---
   const toggleAllergy = (foodId: string) => {
     const newAllergic = allergicIngredients.includes(foodId) 
@@ -630,6 +622,7 @@ function AppContent() {
     reader.onloadend = () => {
       const base64String = reader.result as string;
       setBabyPhoto(base64String);
+      setLastLocalChangeTime(Date.now());
       // 如果已经登录，立即保存到后端
       if (uid) {
         fetch('/api/save-profile', {
@@ -2124,6 +2117,7 @@ function AppContent() {
                     const data = await response.json();
                     if (data.success) {
                       localStorage.setItem('baby_food_username', username);
+                      setUid(username); // 确保设置 UID
                       // 如果返回了角色，说明是预设用户且已初始化，直接进入
                       if (data.role) {
                         setUserRole(data.role);
@@ -2133,6 +2127,8 @@ function AppContent() {
                         const hasProfile = await checkProfile(username);
                         if (!hasProfile) {
                           setLoginStep('baby-setup');
+                        } else {
+                          setIsLoggedIn(true); // 已有资料，直接登录
                         }
                       }
                     } else {
@@ -2196,7 +2192,10 @@ function AppContent() {
               <input 
                 type="text" 
                 value={babyName === '宝宝' ? '' : babyName}
-                onChange={(e) => setBabyName(e.target.value)}
+                onChange={(e) => {
+                  setBabyName(e.target.value);
+                  setLastLocalChangeTime(Date.now());
+                }}
                 placeholder="请输入宝宝昵称，如：塔塔"
                 className="w-full px-6 py-5 bg-gray-50 rounded-[24px] border-2 border-gray-100 font-black text-lg focus:outline-none focus:border-orange-500 transition-colors"
               />
@@ -2208,7 +2207,10 @@ function AppContent() {
               <input 
                 type="date" 
                 value={babyBirthday}
-                onChange={(e) => setBabyBirthday(e.target.value)}
+                onChange={(e) => {
+                  setBabyBirthday(e.target.value);
+                  setLastLocalChangeTime(Date.now());
+                }}
                 className="w-full px-6 py-5 bg-gray-50 rounded-[24px] border-2 border-gray-100 font-black text-lg focus:outline-none focus:border-orange-500 transition-colors"
               />
             </div>
@@ -2255,21 +2257,13 @@ function AppContent() {
               key={r.role}
               onClick={async () => {
                 try {
-                  const response = await fetch('/api/save-profile', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                      username, 
-                      babyName, 
-                      babyBirthday, 
-                      role: r.role 
-                    })
+                  await saveBabyProfile({
+                    babyName,
+                    babyBirthday,
+                    role: r.role,
+                    babyPhoto: null
                   });
-                  const data = await response.json();
-                  if (data.success) {
-                    setUserRole(r.role);
-                    setIsLoggedIn(true);
-                  }
+                  setIsLoggedIn(true);
                 } catch (error) {
                   console.error("保存资料失败:", error);
                   alert("服务器连接失败，请检查网络");
@@ -2430,7 +2424,10 @@ function AppContent() {
                   <input 
                     type="text" 
                     value={babyName}
-                    onChange={(e) => setBabyName(e.target.value)}
+                    onChange={(e) => {
+                      setBabyName(e.target.value);
+                      setLastLocalChangeTime(Date.now());
+                    }}
                     placeholder="请输入宝宝名字"
                     className="w-full px-6 py-5 bg-gray-50 rounded-[24px] border-2 border-gray-100 font-black text-lg focus:outline-none focus:border-orange-500 transition-colors"
                   />
@@ -2442,7 +2439,10 @@ function AppContent() {
                   <input 
                     type="date" 
                     value={babyBirthday}
-                    onChange={(e) => setBabyBirthday(e.target.value)}
+                    onChange={(e) => {
+                      setBabyBirthday(e.target.value);
+                      setLastLocalChangeTime(Date.now());
+                    }}
                     className="w-full px-6 py-5 bg-gray-50 rounded-[24px] border-2 border-gray-100 font-black text-lg focus:outline-none focus:border-orange-500 transition-colors"
                   />
                 </div>
@@ -2893,6 +2893,7 @@ function AppContent() {
             const reader = new FileReader();
             reader.onloadend = () => {
               setBabyPhoto(reader.result as string);
+              setLastLocalChangeTime(Date.now());
             };
             reader.readAsDataURL(file);
           }
