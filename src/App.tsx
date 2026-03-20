@@ -256,10 +256,14 @@ function AppContent() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isSaving, setIsSaving] = useState(false); // 新增：保存状态锁
+  const [lastLocalChangeTime, setLastLocalChangeTime] = useState(0); // 记录最后一次本地修改的时间
 
   // --- 后端 API 调用 ---
   const fetchSharedData = async () => {
-    if (isSaving) return; // 如果正在保存，跳过本次自动刷新，防止旧数据覆盖新数据
+    // 如果正在保存，或者最近 3 秒内有本地修改，跳过本次自动刷新
+    const now = Date.now();
+    if (isSaving || (now - lastLocalChangeTime < 3000)) return; 
+
     try {
       const response = await fetch('/api/get-shared-data', {
         headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
@@ -308,13 +312,23 @@ function AppContent() {
     return await fetchUserProfile(username);
   };
 
-  const saveSharedData = async (data: any) => {
+  const saveSharedData = async (overrideData?: any) => {
     setIsSaving(true); // 开启锁定
     try {
+      const dataToSave = overrideData || {
+        babyName,
+        babyBirthday,
+        babyPhoto,
+        meals,
+        vitamins,
+        weightRecords,
+        safeIngredients,
+        allergicIngredients
+      };
       const response = await fetch('/api/save-shared-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data }),
+        body: JSON.stringify({ data: dataToSave }),
       });
       const result = await response.json();
       if (!result.success) {
@@ -395,10 +409,40 @@ function AppContent() {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [isAuthReady, uid]);
+  }, [isAuthReady, uid, isSaving, lastLocalChangeTime]);
+
+  // 监听数据变化并自动保存
+  useEffect(() => {
+    if (!isAuthReady || !isLoggedIn) return;
+    
+    // 如果最近 3 秒内没有本地修改，说明这是来自 fetchSharedData 的更新，不触发保存
+    const now = Date.now();
+    if (now - lastLocalChangeTime > 3000) return;
+
+    const timer = setTimeout(() => {
+      saveSharedData({
+        babyName,
+        babyBirthday,
+        babyPhoto,
+        meals,
+        vitamins,
+        weightRecords,
+        safeIngredients,
+        allergicIngredients
+      });
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [babyName, babyBirthday, babyPhoto, meals, vitamins, weightRecords, safeIngredients, allergicIngredients, isAuthReady, isLoggedIn]);
 
   const saveBabyProfile = async (data: { babyName: string, babyBirthday: string, role: FamilyRole, babyPhoto?: string | null }) => {
     if (!uid) return;
+    setLastLocalChangeTime(Date.now());
+    // 更新本地状态以触发自动保存
+    setBabyName(data.babyName);
+    setBabyBirthday(data.babyBirthday);
+    if (data.babyPhoto !== undefined) setBabyPhoto(data.babyPhoto);
+    setUserRole(data.role);
+    
     try {
       const response = await fetch('/api/save-profile', {
         method: 'POST',
@@ -494,7 +538,7 @@ function AppContent() {
     
     setAllergicIngredients(newAllergic);
     setSafeIngredients(newSafe);
-    saveSharedData({ allergicIngredients: newAllergic, safeIngredients: newSafe });
+    setLastLocalChangeTime(Date.now());
   };
 
   const toggleSafe = (foodId: string) => {
@@ -505,7 +549,7 @@ function AppContent() {
 
     setSafeIngredients(newSafe);
     setAllergicIngredients(newAllergic);
-    saveSharedData({ safeIngredients: newSafe, allergicIngredients: newAllergic });
+    setLastLocalChangeTime(Date.now());
   };
 
   const toggleVitamin = (date: string, type: 'D' | 'AD') => {
@@ -523,7 +567,7 @@ function AppContent() {
           completedBy: userRole || undefined
         }];
       }
-      saveSharedData({ vitamins: newVitamins });
+      setLastLocalChangeTime(Date.now());
       return newVitamins;
     });
   };
@@ -542,7 +586,7 @@ function AppContent() {
         }
         return m;
       });
-      saveSharedData({ meals: newMeals });
+      setLastLocalChangeTime(Date.now());
       return newMeals;
     });
   };
@@ -645,7 +689,7 @@ function AppContent() {
       newMeals = [...meals, newMeal].sort((a, b) => a.time.localeCompare(b.time));
     }
     setMeals(newMeals);
-    saveSharedData({ meals: newMeals });
+    setLastLocalChangeTime(Date.now());
     setIsAddingMeal(false);
     setAddMealStep(1);
     setNewMealData({ time: '12:00', type: 'food', foods: [] });
@@ -681,7 +725,7 @@ function AppContent() {
     setIngredients(newIngredients);
     setSafeIngredients(newSafe);
     setAllergicIngredients(newAllergic);
-    saveSharedData({ safeIngredients: newSafe, allergicIngredients: newAllergic });
+    setLastLocalChangeTime(Date.now());
   };
 
   const openEditMeal = (meal: Meal) => {
@@ -700,7 +744,7 @@ function AppContent() {
   const deleteMeal = (id: string) => {
     const newMeals = meals.filter(m => m.id !== id);
     setMeals(newMeals);
-    saveSharedData({ meals: newMeals });
+    setLastLocalChangeTime(Date.now());
   };
 
   const addWeight = () => {
@@ -715,7 +759,7 @@ function AppContent() {
       } else {
         newRecords = [...prev, { id: Date.now().toString(), date: today, weight: weightNum }].sort((a, b) => a.date.localeCompare(b.date));
       }
-      saveSharedData({ weightRecords: newRecords });
+      setLastLocalChangeTime(Date.now());
       return newRecords;
     });
     setIsAddingWeight(false);
