@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, ErrorInfo, ReactNode } from 'react';
 import { 
   Baby, 
   Utensils, 
@@ -28,7 +28,8 @@ import {
   History as HistoryIcon,
   TrendingUp,
   Mail,
-  ShieldCheck
+  ShieldCheck,
+  LogOut
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -43,6 +44,118 @@ import {
   Bar,
   Legend
 } from 'recharts';
+
+// --- Firebase Imports ---
+import { auth, db } from './firebase';
+import { 
+  collection, 
+  doc, 
+  onSnapshot, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc, 
+  getDoc, 
+  query, 
+  where, 
+  addDoc,
+  getDocFromServer
+} from 'firebase/firestore';
+import { 
+  signInWithPopup, 
+  GoogleAuthProvider, 
+  onAuthStateChanged, 
+  signOut 
+} from 'firebase/auth';
+
+// --- Error Handling ---
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+class ErrorBoundary extends React.Component<any, any> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, errorInfo: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, errorInfo: error.message };
+  }
+
+  componentDidCatch(error: any, errorInfo: ErrorInfo) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen p-5 bg-red-50 text-red-900">
+          <AlertCircle className="w-16 h-16 mb-4 text-red-500" />
+          <h1 className="text-2xl font-black mb-2">出错了</h1>
+          <p className="text-center mb-4 opacity-70">应用程序遇到了一些问题。请尝试刷新页面。</p>
+          <div className="bg-white p-4 rounded-xl border border-red-200 text-xs font-mono overflow-auto max-w-full">
+            {this.state.errorInfo}
+          </div>
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-6 duo-btn-orange px-8 py-3 rounded-2xl"
+          >
+            刷新页面
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 // --- 辅助工具 ---
 const getLocalDateString = (date: Date) => {
@@ -148,39 +261,111 @@ const INITIAL_INGREDIENTS: Ingredient[] = [
 ];
 
 export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppContent />
+    </ErrorBoundary>
+  );
+}
+
+function AppContent() {
   // --- 状态管理 ---
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [username, setUsername] = useState(localStorage.getItem('baby_food_username') || '');
-  const [password, setPassword] = useState('');
+  const [uid, setUid] = useState<string | null>(null);
   const [loginStep, setLoginStep] = useState<'login' | 'baby-setup' | 'role'>('login');
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
 
-  // 检查用户资料
-  const checkProfile = async (user: string) => {
+  // --- 后端 API 调用 ---
+  const fetchSharedData = async () => {
     try {
-      const response = await fetch(`/api/get-profile?username=${encodeURIComponent(user)}`);
-      const data = await response.json();
-      if (data.success && data.profile) {
-        setBabyName(data.profile.babyName);
-        setBabyBirthday(data.profile.babyBirthday);
-        setUserRole(data.profile.role);
-        setIsLoggedIn(true);
-        // 登录成功后获取共享数据
-        await fetchSharedData();
-        return true;
+      const response = await fetch('/api/get-shared-data');
+      const result = await response.json();
+      if (result.success) {
+        const data = result.data;
+        setBabyName(data.babyName || '宝宝');
+        setBabyBirthday(data.babyBirthday || '2025-08-07');
+        setBabyPhoto(data.babyPhoto || null);
+        setMeals(data.meals || []);
+        setVitamins(data.vitamins || []);
+        setWeightRecords(data.weightRecords || []);
+        setSafeIngredients(data.safeIngredients || []);
+        setAllergicIngredients(data.allergicIngredients || []);
       }
     } catch (error) {
-      console.error("获取资料失败:", error);
+      console.error("Failed to fetch shared data:", error);
     }
-    return false;
+  };
+
+  const fetchUserProfile = async (username: string) => {
+    try {
+      const response = await fetch(`/api/get-profile?username=${username}`);
+      const result = await response.json();
+      if (result.success) {
+        const profile = result.profile;
+        setUserRole(profile.role || null);
+        if (profile.babyName) setBabyName(profile.babyName);
+        if (profile.babyBirthday) setBabyBirthday(profile.babyBirthday);
+        if (profile.babyPhoto) setBabyPhoto(profile.babyPhoto);
+        return true;
+      } else {
+        // 如果没有资料，进入设置流程
+        setLoginStep('baby-setup');
+        return false;
+      }
+    } catch (error) {
+      console.error("Failed to fetch user profile:", error);
+      return false;
+    }
+  };
+
+  const checkProfile = async (username: string) => {
+    return await fetchUserProfile(username);
+  };
+
+  const saveSharedData = async (data: any) => {
+    try {
+      const response = await fetch('/api/save-shared-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data }),
+      });
+      const result = await response.json();
+      if (!result.success) {
+        console.error("Failed to save shared data:", result.message);
+      }
+    } catch (error) {
+      console.error("Error saving shared data:", error);
+    }
   };
 
   // 初始加载检查登录状态
   useEffect(() => {
-    const savedUser = localStorage.getItem('baby_food_username');
-    if (savedUser) {
-      checkProfile(savedUser);
+    const savedUsername = localStorage.getItem('baby_food_username');
+    if (savedUsername) {
+      setUid(savedUsername);
+      setIsLoggedIn(true);
+      fetchUserProfile(savedUsername);
+      fetchSharedData();
     }
+    setIsAuthReady(true);
   }, []);
+
+  // 验证 Firestore 连接
+  useEffect(() => {
+    async function testConnection() {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (error) {
+        if(error instanceof Error && error.message.includes('the client is offline')) {
+          console.error("Please check your Firebase configuration. ");
+        }
+      }
+    }
+    testConnection();
+  }, []);
+
   const [userRole, setUserRole] = useState<FamilyRole | null>(null);
   const [activePage, setActivePage] = useState<Page>('home');
   const [selectedMealId, setSelectedMealId] = useState<string | null>(null);
@@ -192,11 +377,7 @@ export default function App() {
   const [ingredients, setIngredients] = useState<Ingredient[]>(INITIAL_INGREDIENTS);
   const [meals, setMeals] = useState<Meal[]>([]);
   const [vitamins, setVitamins] = useState<VitaminRecord[]>([]);
-  const [weightRecords, setWeightRecords] = useState<WeightRecord[]>([
-    { id: 'w1', date: '2026-03-01', weight: 8.2 },
-    { id: 'w2', date: '2026-03-04', weight: 8.35 },
-    { id: 'w3', date: '2026-03-07', weight: 8.5 },
-  ]);
+  const [weightRecords, setWeightRecords] = useState<WeightRecord[]>([]);
   const [historySelectedDate, setHistorySelectedDate] = useState<string | null>(null);
   const [historySearchDate, setHistorySearchDate] = useState<string>(getLocalDateString(new Date()));
   const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
@@ -204,7 +385,7 @@ export default function App() {
   const [isAddingWeight, setIsAddingWeight] = useState(false);
   const [newWeight, setNewWeight] = useState<string>('');
   
-  const [safeIngredients, setSafeIngredients] = useState<string[]>(['1', '13', '2', '16', '6', '33', '11', '17', '3', '31', '32', '18', '7', '5', '10']); // 已排敏食材ID
+  const [safeIngredients, setSafeIngredients] = useState<string[]>([]); // 已排敏食材ID
   const [allergicIngredients, setAllergicIngredients] = useState<string[]>([]); // 已过敏食材ID
   const [selectedDateForPlan, setSelectedDateForPlan] = useState<string>(getLocalDateString(new Date()));
   const [isAddingMeal, setIsAddingMeal] = useState(false);
@@ -226,45 +407,57 @@ export default function App() {
   const [babyBirthday, setBabyBirthday] = useState<string>('2025-08-07');
   const [isEditingBabyProfile, setIsEditingBabyProfile] = useState(false);
 
-  // --- 共享数据同步 ---
-  const fetchSharedData = async () => {
-    try {
-      const response = await fetch('/api/get-shared-data');
-      const result = await response.json();
-      if (result.success && result.data) {
-        const d = result.data;
-        if (d.meals && d.meals.length > 0) setMeals(d.meals);
-        if (d.vitamins && d.vitamins.length > 0) setVitamins(d.vitamins);
-        if (d.weightRecords && d.weightRecords.length > 0) setWeightRecords(d.weightRecords);
-        if (d.safeIngredients && d.safeIngredients.length > 0) setSafeIngredients(d.safeIngredients);
-        if (d.allergicIngredients) setAllergicIngredients(d.allergicIngredients);
-        if (d.babyName) setBabyName(d.babyName);
-        if (d.babyBirthday) setBabyBirthday(d.babyBirthday);
-      }
-    } catch (error) {
-      console.error("获取共享数据失败:", error);
-    }
-  };
+  // --- 后端数据同步 (替代 Firestore) ---
+  useEffect(() => {
+    if (!isAuthReady || !uid) return;
 
-  const saveSharedData = async (updates: any) => {
+    // 初始加载
+    fetchUserProfile(uid);
+    fetchSharedData();
+
+    // 轮询同步 (简单实现实时效果)
+    const interval = setInterval(() => {
+      fetchSharedData();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [isAuthReady, uid]);
+
+  const saveBabyProfile = async (data: { babyName: string, babyBirthday: string, role: FamilyRole, babyPhoto?: string | null }) => {
+    if (!uid) return;
     try {
-      await fetch('/api/save-shared-data', {
+      const response = await fetch('/api/save-profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: updates })
+        body: JSON.stringify({ username: uid, ...data }),
       });
+      const result = await response.json();
+      if (result.success) {
+        setLoginStep('login');
+        setIsEditingBabyProfile(false);
+        fetchUserProfile(uid);
+        fetchSharedData();
+      }
     } catch (error) {
-      console.error("保存共享数据失败:", error);
+      console.error("Failed to save profile:", error);
     }
   };
 
-  // 轮询同步数据 (每 10 秒)
-  useEffect(() => {
-    if (isLoggedIn) {
-      const interval = setInterval(fetchSharedData, 10000);
-      return () => clearInterval(interval);
+  const handleLogin = async () => {
+    // 移除 Firebase 登录，改用后端登录
+    setLoginStep('login');
+  };
+
+  const handleLogout = async () => {
+    try {
+      localStorage.removeItem('baby_food_username');
+      setUid(null);
+      setIsLoggedIn(false);
+      setActivePage('home');
+    } catch (error) {
+      console.error("Logout failed:", error);
     }
-  }, [isLoggedIn]);
+  };
   const [isAddingIngredient, setIsAddingIngredient] = useState(false);
   const [newIngredientData, setNewIngredientData] = useState<Partial<Ingredient>>({
     category: 'vegetable',
@@ -417,7 +610,22 @@ export default function App() {
     if (!file) return;
     const reader = new FileReader();
     reader.onloadend = () => {
-      setBabyPhoto(reader.result as string);
+      const base64String = reader.result as string;
+      setBabyPhoto(base64String);
+      // 如果已经登录，立即保存到后端
+      if (uid) {
+        fetch('/api/save-profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            username: uid, 
+            babyName, 
+            babyBirthday, 
+            role: userRole, 
+            babyPhoto: base64String 
+          }),
+        }).catch(err => console.error("Failed to save baby photo:", err));
+      }
     };
     reader.readAsDataURL(file);
   };

@@ -1,0 +1,104 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and baby information",
+      "type": "object",
+      "properties": {
+        "babyName": { "type": "string" },
+        "babyAge": { "type": "string" },
+        "babyStage": { "type": "string" },
+        "babyPhoto": { "type": "string", "description": "Base64 string of baby photo" },
+        "allergicIngredients": { "type": "array", "items": { "type": "string" } },
+        "safeIngredients": { "type": "array", "items": { "type": "string" } },
+        "role": { "type": "string", "enum": ["妈妈", "爸爸", "爷爷", "奶奶", "外公", "外婆", "月嫂", "其他"] }
+      },
+      "required": ["babyName"]
+    },
+    "Meal": {
+      "title": "Meal",
+      "description": "A record of a meal (milk or food)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "type": { "type": "string", "enum": ["milk", "food"] },
+        "foods": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "foodId": { "type": "string" },
+              "quantity": { "type": "number" },
+              "actualQuantity": { "type": "number" },
+              "isTesting": { "type": "boolean" }
+            }
+          }
+        },
+        "milkType": { "type": "string", "enum": ["breast", "formula"] },
+        "milkVolume": { "type": "number" },
+        "actualMilkVolume": { "type": "number" },
+        "isCompleted": { "type": "boolean" },
+        "photos": { "type": "array", "items": { "type": "string" } },
+        "comments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "role": { "type": "string" },
+              "text": { "type": "string" },
+              "time": { "type": "string" }
+            }
+          }
+        },
+        "generatedBy": { "type": "string" },
+        "completedBy": { "type": "string" }
+      },
+      "required": ["uid", "date", "time", "type"]
+    },
+    "VitaminRecord": {
+      "title": "VitaminRecord",
+      "description": "A record of vitamin intake",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "date": { "type": "string" },
+        "type": { "type": "string", "enum": ["D", "AD"] },
+        "isCompleted": { "type": "boolean" },
+        "completedBy": { "type": "string" }
+      },
+      "required": ["uid", "date", "type"]
+    },
+    "WeightRecord": {
+      "title": "WeightRecord",
+      "description": "A record of baby weight",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "date": { "type": "string" },
+        "weight": { "type": "number" }
+      },
+      "required": ["uid", "date", "weight"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile and settings"
+    },
+    "/meals/{mealId}": {
+      "schema": "Meal",
+      "description": "Meal records"
+    },
+    "/vitamins/{vitaminId}": {
+      "schema": "VitaminRecord",
+      "description": "Vitamin records"
+    },
+    "/weightRecords/{weightId}": {
+      "schema": "WeightRecord",
+      "description": "Weight records"
+    }
+  }
+}

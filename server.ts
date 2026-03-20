@@ -32,6 +32,7 @@ async function startServer() {
       sharedData: {
         babyName: "宝宝",
         babyBirthday: "2025-08-07",
+        babyPhoto: null,
         meals: [
           { id: 'm1', date: '2026-03-19', time: "07:00", type: 'milk', milkType: 'breast', milkVolume: 180, foods: [], isCompleted: true, photos: [], comments: [], generatedBy: '妈妈', completedBy: '妈妈' },
           { id: 'm2', date: '2026-03-19', time: "12:00", type: 'food', foods: [{ foodId: '1', quantity: 2 }], isCompleted: false, photos: [], comments: [], generatedBy: '妈妈' },
@@ -68,6 +69,7 @@ async function startServer() {
         data.sharedData = {
           babyName: "宝宝",
           babyBirthday: "2025-08-07",
+          babyPhoto: null,
           meals: [],
           vitamins: [],
           weightRecords: [],
@@ -116,7 +118,7 @@ async function startServer() {
 
   // 2. 保存用户资料 (针对个人或共享)
   app.post("/api/save-profile", (req, res) => {
-      const { username, babyName, babyBirthday, role } = req.body;
+      const { username, babyName, babyBirthday, role, babyPhoto } = req.body;
       if (!username) return res.status(400).json({ success: false, message: "用户名不能为空" });
 
       const db = readDB();
@@ -125,10 +127,11 @@ async function startServer() {
       if (PRESET_USERS[username]) {
         db.sharedData.babyName = babyName;
         db.sharedData.babyBirthday = babyBirthday;
+        if (babyPhoto !== undefined) db.sharedData.babyPhoto = babyPhoto;
         // 同时也更新用户自己的角色（虽然预设用户角色通常固定）
         db.users[username].role = role;
       } else {
-        db.profiles[username] = { babyName, babyBirthday, role, updatedAt: new Date().toISOString() };
+        db.profiles[username] = { babyName, babyBirthday, role, babyPhoto, updatedAt: new Date().toISOString() };
       }
       
       writeDB(db);
@@ -148,6 +151,7 @@ async function startServer() {
           profile: {
             babyName: db.sharedData.babyName,
             babyBirthday: db.sharedData.babyBirthday,
+            babyPhoto: db.sharedData.babyPhoto,
             role: db.users[username as string].role
           }
         });
