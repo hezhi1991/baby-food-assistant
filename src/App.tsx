@@ -262,6 +262,7 @@ function AppContent() {
   const [isEditingBabyProfile, setIsEditingBabyProfile] = useState(false);
   const isEditingBabyProfileRef = useRef(false);
   const isFetchingRef = useRef(false);
+  const lastSyncVersionRef = useRef<number>(0);
 
   const [babyPhoto, setBabyPhoto] = useState<string | null>(null);
   const [babyName, setBabyName] = useState<string>('宝宝');
@@ -314,6 +315,16 @@ function AppContent() {
 
     isFetchingRef.current = true;
     try {
+      // 1. 先检查版本，版本没变就不下载大数据
+      const versionRes = await fetch('/api/get-data-version');
+      const versionData = await versionRes.json();
+      
+      if (versionData.success && versionData.version <= lastSyncVersionRef.current) {
+        // console.log("数据版本未变，跳过下载");
+        return;
+      }
+
+      // 2. 版本变了，下载数据
       const response = await fetch('/api/get-shared-data', {
         headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
       });
@@ -336,6 +347,9 @@ function AppContent() {
         setWeightRecords(data.weightRecords || []);
         setSafeIngredients(data.safeIngredients || []);
         setAllergicIngredients(data.allergicIngredients || []);
+        
+        // 更新本地版本号
+        lastSyncVersionRef.current = versionData.version;
       }
     } catch (error) {
       console.error("Failed to fetch shared data:", error);
@@ -346,6 +360,7 @@ function AppContent() {
 
   const fetchUserProfile = async (username: string) => {
     try {
+      // 同样增加版本校验
       const response = await fetch(`/api/get-profile?username=${username}`);
       const result = await response.json();
       if (result.success) {
@@ -353,7 +368,7 @@ function AppContent() {
         setUserRole(profile.role || null);
         if (profile.babyName) setBabyName(profile.babyName);
         if (profile.babyBirthday) setBabyBirthday(profile.babyBirthday);
-        if (profile.babyPhoto) setBabyPhoto(profile.babyPhoto);
+        // 不再从这里更新 babyPhoto
         return true;
       } else {
         // 如果没有资料，进入设置流程
@@ -389,7 +404,12 @@ function AppContent() {
         body: JSON.stringify({ data: dataToSave }),
       });
       const result = await response.json();
-      if (!result.success) {
+      if (result.success) {
+        // 更新本地版本号，避免立即触发重新获取
+        if (result.version) {
+          lastSyncVersionRef.current = result.version;
+        }
+      } else {
         console.error("Failed to save shared data:", result.message);
       }
     } catch (error) {

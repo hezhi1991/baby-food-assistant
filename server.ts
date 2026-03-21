@@ -201,28 +201,54 @@ async function startServer() {
       }
   });
 
-  // 4. 获取共享数据 (不包含大图)
+  // 4. 获取共享数据版本 (极小，用于轮询)
+  app.get("/api/get-data-version", (req, res) => {
+    const db = readDB();
+    res.json({ success: true, version: db.sharedData.lastUpdated || 0 });
+  });
+
+  // 5. 获取共享数据 (不包含大图和餐次图片)
   app.get("/api/get-shared-data", (req, res) => {
     const db = readDB();
     const { babyPhoto, ...restData } = db.sharedData;
+    
+    // 同时也移除餐次中的图片，进一步瘦身
+    if (restData.meals) {
+      restData.meals = restData.meals.map((m: any) => ({
+        ...m,
+        photos: m.photos ? m.photos.map(() => "PHOTO_PLACEHOLDER") : []
+      }));
+    }
+    
+    // 增加缓存控制，配合版本校验使用
+    res.setHeader('Cache-Control', 'public, max-age=5'); 
     res.json({ success: true, data: restData });
   });
 
-  // 5. 专门获取宝宝头像的接口
+  // 6. 专门获取宝宝头像的接口
   app.get("/api/get-baby-photo", (req, res) => {
     const db = readDB();
+    if (db.sharedData.babyPhoto) {
+      // 头像增加强缓存，只有版本变了才重新加载
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+    }
     res.json({ success: true, babyPhoto: db.sharedData.babyPhoto });
   });
 
-  // 5. 保存共享数据
+  // 7. 保存共享数据
   app.post("/api/save-shared-data", (req, res) => {
     const { data } = req.body;
     if (!data) return res.status(400).json({ success: false, message: "数据不能为空" });
 
     const db = readDB();
-    db.sharedData = { ...db.sharedData, ...data };
+    const newVersion = Date.now();
+    db.sharedData = { 
+      ...db.sharedData, 
+      ...data,
+      lastUpdated: newVersion 
+    };
     writeDB(db);
-    res.json({ success: true, message: "共享数据保存成功" });
+    res.json({ success: true, version: newVersion, message: "共享数据保存成功" });
   });
 
   // --- Vite 中间件配置 (开发环境) ---
