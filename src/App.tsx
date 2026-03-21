@@ -347,6 +347,10 @@ function AppContent() {
         setWeightRecords(data.weightRecords || []);
         setSafeIngredients(data.safeIngredients || []);
         setAllergicIngredients(data.allergicIngredients || []);
+        // 同步食材列表，防止“未知食物”
+        if (data.ingredients && data.ingredients.length > 0) {
+          setIngredients(data.ingredients);
+        }
         
         // 更新本地版本号
         lastSyncVersionRef.current = versionData.version;
@@ -396,7 +400,8 @@ function AppContent() {
         vitamins,
         weightRecords,
         safeIngredients,
-        allergicIngredients
+        allergicIngredients,
+        ingredients // 包含食材列表
       };
       const response = await fetch('/api/save-shared-data', {
         method: 'POST',
@@ -502,11 +507,12 @@ function AppContent() {
         vitamins,
         weightRecords,
         safeIngredients,
-        allergicIngredients
+        allergicIngredients,
+        ingredients
       });
     }, 1000);
     return () => clearTimeout(timer);
-  }, [babyName, babyBirthday, babyPhoto, meals, vitamins, weightRecords, safeIngredients, allergicIngredients, isAuthReady, isLoggedIn]);
+  }, [babyName, babyBirthday, babyPhoto, meals, vitamins, weightRecords, safeIngredients, allergicIngredients, ingredients, isAuthReady, isLoggedIn]);
 
   const saveBabyProfile = async (data: { babyName: string, babyBirthday: string, role: FamilyRole, babyPhoto?: string | null }) => {
     if (!uid) return;
@@ -775,7 +781,7 @@ function AppContent() {
     };
     const newIngredients = [...ingredients, newIng];
     setIngredients(newIngredients);
-    // 食材列表通常不共享，但如果需要共享也可以加入 saveSharedData
+    updateLastLocalChange(); // 触发自动保存
     setIsAddingIngredient(false);
     setNewIngredientData({
       category: 'vegetable',
