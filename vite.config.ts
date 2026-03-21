@@ -18,7 +18,8 @@ export default defineConfig(({mode}) => {
     server: {
       host: '0.0.0.0',
       port: 3000,
-      hmr: process.env.DISABLE_HMR !== 'true',
+      // 在远程服务器上默认关闭 HMR 以减少性能开销和连接问题
+      hmr: false,
     },
   };
 });

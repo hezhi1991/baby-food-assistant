@@ -261,6 +261,7 @@ function AppContent() {
   const lastLocalChangeTimeRef = useRef(0);
   const [isEditingBabyProfile, setIsEditingBabyProfile] = useState(false);
   const isEditingBabyProfileRef = useRef(false);
+  const isFetchingRef = useRef(false);
 
   const [babyPhoto, setBabyPhoto] = useState<string | null>(null);
   const [babyName, setBabyName] = useState<string>('宝宝');
@@ -289,6 +290,8 @@ function AppContent() {
 
   // --- 后端 API 调用 ---
   const fetchSharedData = async () => {
+    if (!uid || isFetchingRef.current) return;
+    
     const now = Date.now();
     const timeSinceLastChange = now - lastLocalChangeTimeRef.current;
     
@@ -298,6 +301,7 @@ function AppContent() {
       return;
     }
 
+    isFetchingRef.current = true;
     try {
       const response = await fetch('/api/get-shared-data', {
         headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
@@ -325,6 +329,8 @@ function AppContent() {
       }
     } catch (error) {
       console.error("Failed to fetch shared data:", error);
+    } finally {
+      isFetchingRef.current = false;
     }
   };
 
@@ -443,7 +449,7 @@ function AppContent() {
     // 轮询同步 (简单实现实时效果)
     const interval = setInterval(() => {
       fetchSharedData();
-    }, 5000);
+    }, 10000); // 增加到 10 秒，减轻服务器压力
 
     return () => clearInterval(interval);
   }, [isAuthReady, uid]); // 移除 isSaving 和 lastLocalChangeTime 依赖，靠 Ref 检查最新值

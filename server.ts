@@ -3,7 +3,7 @@ import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createServer as createViteServer } from 'vite';
+// import { createServer as createViteServer } from 'vite'; // 移除静态导入，改用动态导入
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -200,6 +200,7 @@ async function startServer() {
 
   // 4. 获取共享数据 (餐次、维生素、体重等)
   app.get("/api/get-shared-data", (req, res) => {
+    // console.log(`[${new Date().toISOString()}] GET /api/get-shared-data`);
     const db = readDB();
     res.json({ success: true, data: db.sharedData });
   });
@@ -219,6 +220,7 @@ async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     console.log("🚀 正在启动 Vite 开发服务器中间件...");
     try {
+      const { createServer: createViteServer } = await import('vite');
       const vite = await createViteServer({
         server: { middlewareMode: true },
         appType: "spa",
@@ -230,10 +232,19 @@ async function startServer() {
     }
   } else {
     // 生产环境静态资源服务
-    app.use(express.static(path.join(__dirname, "dist")));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(__dirname, "dist", "index.html"));
-    });
+    const distPath = path.join(__dirname, "dist");
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+      console.log("📦 已进入生产模式：正在提供 dist 目录下的静态文件");
+    } else {
+      console.error("❌ 错误：未找到 dist 目录。请先运行 'npm run build'");
+      app.get("*", (req, res) => {
+        res.status(500).send("服务器未构建，请联系管理员运行 npm run build");
+      });
+    }
   }
 
   const PORT = process.env.PORT || 3000;
