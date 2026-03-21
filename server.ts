@@ -173,7 +173,7 @@ async function startServer() {
       res.json({ success: true, message: "资料保存成功" });
   });
 
-  // 3. 获取用户资料
+  // 3. 获取用户资料 (不包含大图)
   app.get("/api/get-profile", (req, res) => {
       const { username } = req.query;
       if (!username) return res.status(400).json({ success: false, message: "用户名不能为空" });
@@ -186,25 +186,32 @@ async function startServer() {
           profile: {
             babyName: db.sharedData.babyName,
             babyBirthday: db.sharedData.babyBirthday,
-            babyPhoto: db.sharedData.babyPhoto,
+            // babyPhoto: db.sharedData.babyPhoto, // 移除大图
             role: db.users[username as string].role
           }
         });
       } else {
         const profile = db.profiles[username as string];
         if (profile) {
-            res.json({ success: true, profile });
+            const { babyPhoto, ...restProfile } = profile;
+            res.json({ success: true, profile: restProfile });
         } else {
             res.json({ success: false, message: "未找到用户资料" });
         }
       }
   });
 
-  // 4. 获取共享数据 (餐次、维生素、体重等)
+  // 4. 获取共享数据 (不包含大图)
   app.get("/api/get-shared-data", (req, res) => {
-    // console.log(`[${new Date().toISOString()}] GET /api/get-shared-data`);
     const db = readDB();
-    res.json({ success: true, data: db.sharedData });
+    const { babyPhoto, ...restData } = db.sharedData;
+    res.json({ success: true, data: restData });
+  });
+
+  // 5. 专门获取宝宝头像的接口
+  app.get("/api/get-baby-photo", (req, res) => {
+    const db = readDB();
+    res.json({ success: true, babyPhoto: db.sharedData.babyPhoto });
   });
 
   // 5. 保存共享数据

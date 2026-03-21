@@ -289,6 +289,18 @@ function AppContent() {
   };
 
   // --- 后端 API 调用 ---
+  const fetchBabyPhoto = async () => {
+    try {
+      const response = await fetch('/api/get-baby-photo');
+      const result = await response.json();
+      if (result.success && result.babyPhoto) {
+        setBabyPhoto(result.babyPhoto);
+      }
+    } catch (error) {
+      console.error("Failed to fetch baby photo:", error);
+    }
+  };
+
   const fetchSharedData = async () => {
     if (!uid || isFetchingRef.current) return;
     
@@ -297,7 +309,6 @@ function AppContent() {
     
     // 如果正在保存，或者正在编辑宝宝资料，或者最近 10 秒内有本地修改，跳过本次自动刷新
     if (isSavingRef.current || isEditingBabyProfileRef.current || (timeSinceLastChange < 10000)) {
-      // console.log("跳过轮询刷新:", { isSaving: isSavingRef.current, isEditing: isEditingBabyProfileRef.current, timeSinceLastChange });
       return;
     }
 
@@ -312,7 +323,6 @@ function AppContent() {
       const nowAfter = Date.now();
       const timeSinceLastChangeAfter = nowAfter - lastLocalChangeTimeRef.current;
       if (isSavingRef.current || isEditingBabyProfileRef.current || (timeSinceLastChangeAfter < 10000)) {
-        // console.log("请求后跳过更新:", { isSaving: isSavingRef.current, isEditing: isEditingBabyProfileRef.current, timeSinceLastChangeAfter });
         return;
       }
 
@@ -320,7 +330,7 @@ function AppContent() {
         const data = result.data;
         setBabyName(data.babyName || '宝宝');
         setBabyBirthday(data.babyBirthday || '2025-08-07');
-        setBabyPhoto(data.babyPhoto || null);
+        // 不再从这里更新 babyPhoto，因为它太大了
         setMeals(data.meals || []);
         setVitamins(data.vitamins || []);
         setWeightRecords(data.weightRecords || []);
@@ -396,8 +406,7 @@ function AppContent() {
     if (savedUsername) {
       setUid(savedUsername);
       setIsLoggedIn(true);
-      fetchUserProfile(savedUsername);
-      fetchSharedData();
+      // 移除这里的 fetch 调用，统一交给下面的 useEffect 处理
     }
     setIsAuthReady(true);
   }, []);
@@ -442,17 +451,19 @@ function AppContent() {
   useEffect(() => {
     if (!isAuthReady || !uid) return;
 
-    // 初始加载
+    // 初始加载：只在 uid 改变时执行一次
+    console.log("🚀 正在执行初始数据同步...");
     fetchUserProfile(uid);
     fetchSharedData();
+    fetchBabyPhoto(); // 独立加载头像
 
     // 轮询同步 (简单实现实时效果)
     const interval = setInterval(() => {
       fetchSharedData();
-    }, 10000); // 增加到 10 秒，减轻服务器压力
+    }, 15000); // 进一步增加到 15 秒，确保低带宽下的稳定性
 
     return () => clearInterval(interval);
-  }, [isAuthReady, uid]); // 移除 isSaving 和 lastLocalChangeTime 依赖，靠 Ref 检查最新值
+  }, [isAuthReady, uid]); 
 
   // 监听数据变化并自动保存
   useEffect(() => {
@@ -2151,6 +2162,11 @@ function AppContent() {
             <button 
               onClick={async () => {
                 if (username && password) {
+                  // 立即重置状态，防止旧身份干扰
+                  setIsLoggedIn(false);
+                  setUserRole(null);
+                  setUid(null);
+                  
                   try {
                     const response = await fetch('/api/login', {
                       method: 'POST',
@@ -2160,18 +2176,22 @@ function AppContent() {
                     const data = await response.json();
                     if (data.success) {
                       localStorage.setItem('baby_food_username', username);
-                      setUid(username); // 确保设置 UID
+                      setUid(username);
                       // 如果返回了角色，说明是预设用户且已初始化，直接进入
                       if (data.role) {
                         setUserRole(data.role);
-                        await checkProfile(username);
+                        await fetchUserProfile(username);
+                        await fetchSharedData();
+                        await fetchBabyPhoto();
                         setIsLoggedIn(true);
                       } else {
-                        const hasProfile = await checkProfile(username);
+                        const hasProfile = await fetchUserProfile(username);
                         if (!hasProfile) {
                           setLoginStep('baby-setup');
                         } else {
-                          setIsLoggedIn(true); // 已有资料，直接登录
+                          await fetchSharedData();
+                          await fetchBabyPhoto();
+                          setIsLoggedIn(true);
                         }
                       }
                     } else {
