@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression'; // 导入压缩模块
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -21,6 +22,7 @@ const PRESET_USERS: Record<string, { password: string, role: string }> = {
 
 async function startServer() {
   const app = express();
+  app.use(compression()); // 开启全站 Gzip 压缩，大幅提升加载速度
   // 基础中间件
   app.use(express.json({ limit: '50mb' }));
   app.use(cors());
@@ -234,11 +236,15 @@ async function startServer() {
     // 生产环境静态资源服务
     const distPath = path.join(__dirname, "dist");
     if (fs.existsSync(distPath)) {
-      app.use(express.static(distPath));
+      // 对静态资源设置 1 年的强缓存，第二次打开秒开
+      app.use(express.static(distPath, {
+        maxAge: '1y',
+        immutable: true
+      }));
       app.get("*", (req, res) => {
         res.sendFile(path.join(distPath, "index.html"));
       });
-      console.log("📦 已进入生产模式：正在提供 dist 目录下的静态文件");
+      console.log("📦 已进入生产模式：Gzip 压缩与强缓存已开启");
     } else {
       console.error("❌ 错误：未找到 dist 目录。请先运行 'npm run build'");
       app.get("*", (req, res) => {

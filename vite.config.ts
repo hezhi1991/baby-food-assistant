@@ -21,5 +21,15 @@ export default defineConfig(({mode}) => {
       // 在远程服务器上默认关闭 HMR 以减少性能开销和连接问题
       hmr: false,
     },
+    build: {
+      chunkSizeWarningLimit: 1000,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor': ['react', 'react-dom', 'lucide-react', 'recharts', 'motion/react'],
+          }
+        }
+      }
+    }
   };
 });
