@@ -341,16 +341,31 @@ function AppContent() {
         const data = result.data;
         setBabyName(data.babyName || '宝宝');
         setBabyBirthday(data.babyBirthday || '2025-08-07');
-        // 不再从这里更新 babyPhoto，因为它太大了
+        
+        // 核心修复：合并食材列表，而不是简单覆盖
+        // 这样即使服务器返回的数据有问题，本地新加的食材也不会消失
+        if (data.ingredients && Array.isArray(data.ingredients)) {
+          setIngredients(prev => {
+            const merged = [...prev];
+            data.ingredients.forEach((newIng: Ingredient) => {
+              const exists = merged.find(i => i.id === newIng.id);
+              if (!exists) {
+                merged.push(newIng);
+              } else {
+                // 如果已存在，以服务器为准更新属性（除了 ID）
+                const index = merged.findIndex(i => i.id === newIng.id);
+                merged[index] = newIng;
+              }
+            });
+            return merged;
+          });
+        }
+        
         setMeals(data.meals || []);
         setVitamins(data.vitamins || []);
         setWeightRecords(data.weightRecords || []);
         setSafeIngredients(data.safeIngredients || []);
         setAllergicIngredients(data.allergicIngredients || []);
-        // 同步食材列表，防止“未知食物”
-        if (data.ingredients && data.ingredients.length > 0) {
-          setIngredients(data.ingredients);
-        }
         
         // 更新本地版本号
         lastSyncVersionRef.current = versionData.version;
@@ -770,8 +785,9 @@ function AppContent() {
 
   const addIngredient = () => {
     if (!newIngredientData.name || !newIngredientData.category) return;
+    const newId = `custom_${Date.now()}`; // 使用更具辨识度的 ID 格式
     const newIng: Ingredient = {
-      id: Date.now().toString(),
+      id: newId,
       name: newIngredientData.name,
       category: newIngredientData.category as any,
       minAge: newIngredientData.minAge || 6,
@@ -779,10 +795,16 @@ function AppContent() {
       tips: newIngredientData.tips || '',
       icon: newIngredientData.icon || '🥦'
     };
-    const newIngredients = [...ingredients, newIng];
-    setIngredients(newIngredients);
-    updateLastLocalChange(); // 触发自动保存
+    
+    setIngredients(prev => [...prev, newIng]);
+    updateLastLocalChange(); // 立即标记本地修改
     setIsAddingIngredient(false);
+    
+    // 立即手动触发一次保存，确保新食材第一时间上云
+    setTimeout(() => {
+      saveSharedData();
+    }, 100);
+
     setNewIngredientData({
       category: 'vegetable',
       minAge: 6,
