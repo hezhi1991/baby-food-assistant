@@ -21,18 +21,13 @@ const PRESET_USERS: Record<string, { password: string, role: string }> = {
 
 async function startServer() {
   const app = express();
+  // 基础中间件
   app.use(express.json({ limit: '50mb' }));
   app.use(cors());
 
-  // 添加安全头，帮助 Safari 识别安全环境
+  // 极简安全头，仅保留必要的
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
-    // 强制 HSTS (仅在生产环境)
-    if (process.env.NODE_ENV === 'production') {
-      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-    }
     next();
   });
 
@@ -222,11 +217,17 @@ async function startServer() {
 
   // --- Vite 中间件配置 (开发环境) ---
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
+    console.log("🚀 正在启动 Vite 开发服务器中间件...");
+    try {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+      console.log("✅ Vite 中间件已挂载");
+    } catch (e) {
+      console.error("❌ Vite 启动失败:", e);
+    }
   } else {
     // 生产环境静态资源服务
     app.use(express.static(path.join(__dirname, "dist")));
