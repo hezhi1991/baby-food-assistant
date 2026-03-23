@@ -818,7 +818,7 @@ function AppContent() {
         date: selectedDateForPlan,
         time: newMealData.time,
         type: newMealData.type,
-        foods: newMealData.type === 'milk' ? [] : newMealData.foods.map(f => ({
+        foods: newMealData.type === 'milk' ? [] : (newMealData.foods || []).map(f => ({
           ...f,
           isTesting: f.isTesting ?? (!safeIngredients.includes(f.foodId) && !allergicIngredients.includes(f.foodId))
         })),
@@ -1008,14 +1008,14 @@ function AppContent() {
                 const dayWeight = weightRecords.find(w => w.date === dateStr)?.weight;
                 const dayMeals = meals.filter(m => m.date === dateStr && m.isCompleted);
                 const dayVitamins = vitamins.filter(v => v.date === dateStr && v.isCompleted);
-                const dayPoops = poopRecords.filter(p => p.date === dateStr);
-                const daySleeps = sleepRecords.filter(s => s.date === dateStr);
+                const dayPoops = poopRecords?.filter(p => p.date === dateStr) || [];
+                const daySleeps = sleepRecords?.filter(s => s.date === dateStr) || [];
                 const dayMilkTotal = dayMeals
                   .filter(m => m.type === 'milk')
                   .reduce((sum, m) => sum + (m.actualMilkVolume || m.milkVolume || 0), 0);
                 const dayFoodTotal = dayMeals
                   .filter(m => m.type === 'food')
-                  .reduce((sum, m) => sum + m.foods.reduce((s, f) => s + (f.actualQuantity ?? f.quantity), 0), 0);
+                  .reduce((sum, m) => sum + (m.foods?.reduce((s, f) => s + (f.actualQuantity ?? f.quantity), 0) || 0), 0);
                 const isFuture = dateStr > today;
 
                 return (
@@ -1032,7 +1032,7 @@ function AppContent() {
                     } ${isFuture ? 'opacity-30 cursor-not-allowed' : ''} ${historySearchDate === dateStr ? 'ring-2 ring-orange-500 ring-offset-1' : ''} ${dayPoops.length > 0 ? 'bg-[#78350f]/5 border-[#78350f]/20' : ''}`}
                   >
                     <div className="absolute top-1 right-1 flex gap-0.5">
-                      {dayPoops.length > 0 && (
+                      {dayPoops?.length > 0 && (
                         <span className="text-[8px]">💩</span>
                       )}
                     </div>
@@ -1132,13 +1132,13 @@ function AppContent() {
                         <span className="text-[11px] font-black text-orange-600">体重 {dayWeight}kg</span>
                       </div>
                     )}
-                    {poopRecords.filter(p => p.date === activeDate).length > 0 && (
+                    {poopRecords?.filter(p => p.date === activeDate).length > 0 && (
                       <div className="flex items-center gap-1.5 bg-[#78350f]/5 px-2.5 py-1 rounded-xl border border-[#78350f]/10">
                         <span className="text-[11px]">💩</span>
                         <span className="text-[11px] font-black text-[#78350f]">排便 {poopRecords.filter(p => p.date === activeDate).length}次</span>
                       </div>
                     )}
-                    {sleepRecords.filter(s => s.date === activeDate).length > 0 && (
+                    {sleepRecords?.filter(s => s.date === activeDate).length > 0 && (
                       <div className="flex items-center gap-1.5 bg-[#1e3a8a]/5 px-2.5 py-1 rounded-xl border border-[#1e3a8a]/10">
                         <span className="text-[11px]">💤</span>
                         <span className="text-[11px] font-black text-[#1e3a8a]">睡眠 {Math.floor(sleepRecords.filter(s => s.date === activeDate).reduce((sum, s) => sum + s.durationMinutes, 0) / 60)}h{Math.round(sleepRecords.filter(s => s.date === activeDate).reduce((sum, s) => sum + s.durationMinutes, 0) % 60)}m</span>
@@ -1151,7 +1151,7 @@ function AppContent() {
               <div className="space-y-3 pt-4 border-t-2 border-gray-50">
                 {/* 护理记录 (排便/睡眠) */}
                 <div className="grid grid-cols-2 gap-3 mb-4">
-                  {poopRecords.filter(p => p.date === activeDate).length > 0 && (
+                  {(poopRecords?.filter(p => p.date === activeDate) || []).length > 0 && (
                     <div className="space-y-2">
                       <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">排便记录</p>
                       {poopRecords.filter(p => p.date === activeDate).sort((a, b) => a.time.localeCompare(b.time)).map(p => (
@@ -1162,7 +1162,7 @@ function AppContent() {
                       ))}
                     </div>
                   )}
-                  {sleepRecords.filter(s => s.date === activeDate).length > 0 && (
+                  {(sleepRecords?.filter(s => s.date === activeDate) || []).length > 0 && (
                     <div className="space-y-2">
                       <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">睡眠记录</p>
                       {sleepRecords.filter(s => s.date === activeDate).sort((a, b) => a.startTime.localeCompare(b.startTime)).map(s => (
@@ -1549,7 +1549,7 @@ function AppContent() {
                             <span>
                               {meal.type === 'milk' 
                                 ? `${meal.milkType === 'breast' ? '母乳' : '配方奶'}`
-                                : (meal.foods.length > 0 
+                                : ((meal.foods?.length || 0) > 0 
                                     ? meal.foods.map((f, idx) => {
                                         const ing = ingredients.find(i => i.id === f.foodId);
                                         const isTesting = f.isTesting;
@@ -1574,9 +1574,9 @@ function AppContent() {
                               <span className="text-[10px] font-bold opacity-40 uppercase tracking-wider">
                                 {meal.type === 'milk'
                                   ? `计划 ${meal.milkVolume}ml`
-                                  : meal.foods.length > 0 ? `计划 ${(() => {
-                                      const g = meal.foods.filter(f => ingredients.find(i => i.id === f.foodId)?.category === 'grain').reduce((s, f) => s + f.quantity, 0);
-                                      const o = meal.foods.filter(f => ingredients.find(i => i.id === f.foodId)?.category !== 'grain').reduce((s, f) => s + f.quantity, 0);
+                                  : (meal.foods?.length || 0) > 0 ? `计划 ${(() => {
+                                      const g = (meal.foods || []).filter(f => ingredients.find(i => i.id === f.foodId)?.category === 'grain').reduce((s, f) => s + f.quantity, 0);
+                                      const o = (meal.foods || []).filter(f => ingredients.find(i => i.id === f.foodId)?.category !== 'grain').reduce((s, f) => s + f.quantity, 0);
                                       return (g > 0 ? `${g}克` : '') + (g > 0 && o > 0 ? '+' : '') + (o > 0 ? `${o}勺` : '');
                                     })()}` : ''}
                               </span>
@@ -1589,8 +1589,8 @@ function AppContent() {
                                   {meal.type === 'milk'
                                     ? `实摄 ${meal.actualMilkVolume ?? meal.milkVolume}ml`
                                     : `实摄 ${(() => {
-                                        const g = meal.foods.filter(f => ingredients.find(i => i.id === f.foodId)?.category === 'grain').reduce((s, f) => s + (f.actualQuantity ?? f.quantity), 0);
-                                        const o = meal.foods.filter(f => ingredients.find(i => i.id === f.foodId)?.category !== 'grain').reduce((s, f) => s + (f.actualQuantity ?? f.quantity), 0);
+                                        const g = (meal.foods || []).filter(f => ingredients.find(i => i.id === f.foodId)?.category === 'grain').reduce((s, f) => s + (f.actualQuantity ?? f.quantity), 0);
+                                        const o = (meal.foods || []).filter(f => ingredients.find(i => i.id === f.foodId)?.category !== 'grain').reduce((s, f) => s + (f.actualQuantity ?? f.quantity), 0);
                                         return (g > 0 ? `${g}克` : '') + (g > 0 && o > 0 ? '+' : '') + (o > 0 ? `${o}勺` : '');
                                       })()}`}
                                 </span>
@@ -1824,7 +1824,7 @@ function AppContent() {
                       <div className="font-black text-gray-800 leading-tight text-lg">
                         {meal.type === 'milk' 
                           ? `${meal.milkType === 'breast' ? '母乳' : '配方奶'} (${meal.milkVolume || 0}ml)`
-                          : (meal.foods.length > 0 
+                          : ((meal.foods?.length || 0) > 0 
                               ? meal.foods.map((f, idx) => {
                                   const ing = ingredients.find(i => i.id === f.foodId);
                                   const isTesting = f.isTesting;
@@ -1967,7 +1967,7 @@ function AppContent() {
                       </div>
                     </div>
                   ) : (
-                    meal.foods.length > 0 ? meal.foods.map(f => {
+                    (meal.foods?.length || 0) > 0 ? meal.foods.map(f => {
                       const ing = ingredients.find(i => i.id === f.foodId);
                       const isAllergic = allergicIngredients.includes(f.foodId);
                       const isSafe = safeIngredients.includes(f.foodId);
