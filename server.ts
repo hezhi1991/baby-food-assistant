@@ -62,7 +62,9 @@ async function startServer() {
           { id: 'w3', date: '2026-03-07', weight: 8.5 },
         ],
         safeIngredients: ['1', '13', '2', '16', '6', '33', '11', '17', '3', '31', '32', '18', '7', '5', '10'],
-        allergicIngredients: []
+        allergicIngredients: [],
+        poopRecords: [],
+        sleepRecords: []
       } 
     };
     fs.writeFileSync(DB_FILE, JSON.stringify(initialDB, null, 2));
@@ -95,8 +97,13 @@ async function startServer() {
           vitamins: [],
           weightRecords: [],
           safeIngredients: [],
-          allergicIngredients: []
+          allergicIngredients: [],
+          ingredients: []
         };
+        changed = true;
+      } else if (!memoryDB.sharedData.ingredients) {
+        // 确保旧数据也能增加 ingredients 字段
+        memoryDB.sharedData.ingredients = [];
         changed = true;
       }
       if (changed) {
@@ -207,18 +214,10 @@ async function startServer() {
     res.json({ success: true, version: db.sharedData.lastUpdated || 0 });
   });
 
-  // 5. 获取共享数据 (不包含大图和餐次图片)
+  // 5. 获取共享数据 (不包含大图)
   app.get("/api/get-shared-data", (req, res) => {
     const db = readDB();
     const { babyPhoto, ...restData } = db.sharedData;
-    
-    // 同时也移除餐次中的图片，进一步瘦身
-    if (restData.meals) {
-      restData.meals = restData.meals.map((m: any) => ({
-        ...m,
-        photos: m.photos ? m.photos.map(() => "PHOTO_PLACEHOLDER") : []
-      }));
-    }
     
     // 增加缓存控制，配合版本校验使用
     res.setHeader('Cache-Control', 'public, max-age=5'); 
@@ -242,6 +241,10 @@ async function startServer() {
 
     const db = readDB();
     const newVersion = Date.now();
+    
+    // 记录保存的数据摘要，方便调试
+    console.log(`[Sync] Saving data. Version: ${newVersion}, Meals: ${data.meals?.length}, Ingredients: ${data.ingredients?.length}`);
+    
     db.sharedData = { 
       ...db.sharedData, 
       ...data,

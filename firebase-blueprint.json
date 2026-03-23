@@ -81,6 +81,32 @@
         "weight": { "type": "number" }
       },
       "required": ["uid", "date", "weight"]
+    },
+    "PoopRecord": {
+      "title": "PoopRecord",
+      "description": "A record of baby bowel movement",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "role": { "type": "string" }
+      },
+      "required": ["uid", "date", "time"]
+    },
+    "SleepRecord": {
+      "title": "SleepRecord",
+      "description": "A record of baby sleep",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "date": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "durationMinutes": { "type": "number" },
+        "role": { "type": "string" }
+      },
+      "required": ["uid", "date", "startTime", "endTime"]
     }
   },
   "firestore": {
@@ -99,6 +125,14 @@
     "/weightRecords/{weightId}": {
       "schema": "WeightRecord",
       "description": "Weight records"
+    },
+    "/poopRecords/{poopId}": {
+      "schema": "PoopRecord",
+      "description": "Poop records"
+    },
+    "/sleepRecords/{sleepId}": {
+      "schema": "SleepRecord",
+      "description": "Sleep records"
     }
   }
 }

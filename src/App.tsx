@@ -29,7 +29,9 @@ import {
   TrendingUp,
   Mail,
   ShieldCheck,
-  LogOut
+  LogOut,
+  Moon,
+  Heart
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -145,7 +147,7 @@ const getLocalDateString = (date: Date) => {
 };
 
 // --- 类型定义 ---
-type Page = 'home' | 'recipes' | 'wiki' | 'ai' | 'profile' | 'meal-detail' | 'plan' | 'history';
+type Page = 'home' | 'recipes' | 'wiki' | 'ai' | 'profile' | 'meal-detail' | 'plan' | 'history' | 'care';
 type FamilyRole = '妈妈' | '爸爸' | '爷爷' | '奶奶' | '外公' | '外婆' | '月嫂' | '其他';
 type MealType = 'milk' | 'food';
 
@@ -173,10 +175,25 @@ interface Meal {
   milkVolume?: number; // 奶量：毫升
   actualMilkVolume?: number; // 实际奶量：毫升
   isCompleted: boolean;
-  photos: string[]; // base64图片
   comments: Comment[];
   generatedBy: FamilyRole; // 谁生成的计划
   completedBy?: FamilyRole; // 谁执行的打卡
+}
+
+interface PoopRecord {
+  id: string;
+  date: string;
+  time: string;
+  role: FamilyRole;
+}
+
+interface SleepRecord {
+  id: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  durationMinutes: number;
+  role: FamilyRole;
 }
 
 interface VitaminRecord {
@@ -248,7 +265,7 @@ export default function App() {
 }
 
 function AppContent() {
-  // --- 状态管理 ---
+  // --- 1. 状态管理 (全部移到顶部，确保后续函数闭包能正确访问) ---
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [uid, setUid] = useState<string | null>(null);
   const [loginStep, setLoginStep] = useState<'login' | 'baby-setup' | 'role'>('login');
@@ -269,6 +286,58 @@ function AppContent() {
   const [babyBirthday, setBabyBirthday] = useState<string>('2025-08-07');
   const [userRole, setUserRole] = useState<FamilyRole | null>(null);
 
+  const [activePage, setActivePage] = useState<Page>('home');
+  const [selectedMealId, setSelectedMealId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedAllergyStatus, setSelectedAllergyStatus] = useState<string>('all');
+  
+  // 核心业务数据
+  const [ingredients, setIngredients] = useState<Ingredient[]>(INITIAL_INGREDIENTS);
+  const [meals, setMeals] = useState<Meal[]>([]);
+  const [vitamins, setVitamins] = useState<VitaminRecord[]>([]);
+  const [weightRecords, setWeightRecords] = useState<WeightRecord[]>([]);
+  const [poopRecords, setPoopRecords] = useState<PoopRecord[]>([]);
+  const [sleepRecords, setSleepRecords] = useState<SleepRecord[]>([]);
+  const [isAddingSleep, setIsAddingSleep] = useState(false);
+  const [newSleepData, setNewSleepData] = useState({ startTime: '13:00', endTime: '15:00' });
+  const [isAddingPoop, setIsAddingPoop] = useState(false);
+  const [newPoopTime, setNewPoopTime] = useState(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }));
+  const [historySelectedDate, setHistorySelectedDate] = useState<string | null>(null);
+  const [historySearchDate, setHistorySearchDate] = useState<string>(getLocalDateString(new Date()));
+  const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
+  const [planCalendarMonth, setPlanCalendarMonth] = useState<Date>(new Date());
+  const [isAddingWeight, setIsAddingWeight] = useState(false);
+  const [newWeight, setNewWeight] = useState<string>('');
+  
+  const [safeIngredients, setSafeIngredients] = useState<string[]>([]); // 已排敏食材ID
+  const [allergicIngredients, setAllergicIngredients] = useState<string[]>([]); // 已过敏食材ID
+  const [selectedDateForPlan, setSelectedDateForPlan] = useState<string>(getLocalDateString(new Date()));
+  const todayStr = getLocalDateString(new Date());
+  const [isAddingMeal, setIsAddingMeal] = useState(false);
+  const [editingMealId, setEditingMealId] = useState<string | null>(null);
+  const [addMealStep, setAddMealStep] = useState<number>(1);
+  const [newMealData, setNewMealData] = useState<{ 
+    time: string, 
+    type: MealType, 
+    foods: MealFood[],
+    milkType?: 'breast' | 'formula',
+    milkVolume?: number
+  }>({
+    time: '12:00',
+    type: 'food',
+    foods: []
+  });
+
+  const [isAddingIngredient, setIsAddingIngredient] = useState(false);
+  const [newIngredientData, setNewIngredientData] = useState<Partial<Ingredient>>({
+    category: 'vegetable',
+    minAge: 6,
+    allergyRisk: 'low',
+    icon: '🥦'
+  });
+
+  // --- 2. 辅助工具 ---
   const updateLastLocalChange = () => {
     const now = Date.now();
     lastLocalChangeTimeRef.current = now;
@@ -289,7 +358,7 @@ function AppContent() {
     }
   };
 
-  // --- 后端 API 调用 ---
+  // --- 3. 后端 API 调用 ---
   const fetchBabyPhoto = async () => {
     try {
       const response = await fetch('/api/get-baby-photo');
@@ -364,6 +433,8 @@ function AppContent() {
         setMeals(data.meals || []);
         setVitamins(data.vitamins || []);
         setWeightRecords(data.weightRecords || []);
+        setPoopRecords(data.poopRecords || []);
+        setSleepRecords(data.sleepRecords || []);
         setSafeIngredients(data.safeIngredients || []);
         setAllergicIngredients(data.allergicIngredients || []);
         
@@ -414,6 +485,8 @@ function AppContent() {
         meals,
         vitamins,
         weightRecords,
+        poopRecords,
+        sleepRecords,
         safeIngredients,
         allergicIngredients,
         ingredients // 包含食材列表
@@ -451,42 +524,6 @@ function AppContent() {
     setIsAuthReady(true);
   }, []);
 
-  const [activePage, setActivePage] = useState<Page>('home');
-  const [selectedMealId, setSelectedMealId] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [selectedAllergyStatus, setSelectedAllergyStatus] = useState<string>('all');
-  
-  // 核心业务数据
-  const [ingredients, setIngredients] = useState<Ingredient[]>(INITIAL_INGREDIENTS);
-  const [meals, setMeals] = useState<Meal[]>([]);
-  const [vitamins, setVitamins] = useState<VitaminRecord[]>([]);
-  const [weightRecords, setWeightRecords] = useState<WeightRecord[]>([]);
-  const [historySelectedDate, setHistorySelectedDate] = useState<string | null>(null);
-  const [historySearchDate, setHistorySearchDate] = useState<string>(getLocalDateString(new Date()));
-  const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
-  const [planCalendarMonth, setPlanCalendarMonth] = useState<Date>(new Date());
-  const [isAddingWeight, setIsAddingWeight] = useState(false);
-  const [newWeight, setNewWeight] = useState<string>('');
-  
-  const [safeIngredients, setSafeIngredients] = useState<string[]>([]); // 已排敏食材ID
-  const [allergicIngredients, setAllergicIngredients] = useState<string[]>([]); // 已过敏食材ID
-  const [selectedDateForPlan, setSelectedDateForPlan] = useState<string>(getLocalDateString(new Date()));
-  const [isAddingMeal, setIsAddingMeal] = useState(false);
-  const [editingMealId, setEditingMealId] = useState<string | null>(null);
-  const [addMealStep, setAddMealStep] = useState<number>(1);
-  const [newMealData, setNewMealData] = useState<{ 
-    time: string, 
-    type: MealType, 
-    foods: MealFood[],
-    milkType?: 'breast' | 'formula',
-    milkVolume?: number
-  }>({
-    time: '12:00',
-    type: 'food',
-    foods: []
-  });
-
   // --- 后端数据同步 (替代 Firestore) ---
   useEffect(() => {
     if (!isAuthReady || !uid) return;
@@ -521,6 +558,8 @@ function AppContent() {
         meals,
         vitamins,
         weightRecords,
+        poopRecords,
+        sleepRecords,
         safeIngredients,
         allergicIngredients,
         ingredients
@@ -571,18 +610,51 @@ function AppContent() {
       console.error("Logout failed:", error);
     }
   };
-  const [isAddingIngredient, setIsAddingIngredient] = useState(false);
-  const [newIngredientData, setNewIngredientData] = useState<Partial<Ingredient>>({
-    category: 'vegetable',
-    minAge: 6,
-    allergyRisk: 'low',
-    icon: '🥦'
-  });
-  
   const fileInputRef = useRef<HTMLInputElement>(null);
   const babyPhotoInputRef = useRef<HTMLInputElement>(null);
 
   // --- 动态计算宝宝信息 ---
+  const addPoopRecord = () => {
+    const newRecord: PoopRecord = {
+      id: Date.now().toString(),
+      date: todayStr,
+      time: newPoopTime,
+      role: userRole || '妈妈'
+    };
+    setPoopRecords(prev => [...prev, newRecord]);
+    updateLastLocalChange();
+    setIsAddingPoop(false);
+  };
+
+  const addSleepRecord = () => {
+    const start = new Date(`2000-01-01T${newSleepData.startTime}`);
+    const end = new Date(`2000-01-01T${newSleepData.endTime}`);
+    let duration = (end.getTime() - start.getTime()) / (1000 * 60);
+    if (duration < 0) duration += 24 * 60;
+
+    const newRecord: SleepRecord = {
+      id: Date.now().toString(),
+      date: todayStr,
+      startTime: newSleepData.startTime,
+      endTime: newSleepData.endTime,
+      durationMinutes: duration,
+      role: userRole || '妈妈'
+    };
+    setSleepRecords(prev => [...prev, newRecord]);
+    updateLastLocalChange();
+    setIsAddingSleep(false);
+  };
+
+  const deletePoopRecord = (id: string) => {
+    setPoopRecords(prev => prev.filter(r => r.id !== id));
+    updateLastLocalChange();
+  };
+
+  const deleteSleepRecord = (id: string) => {
+    setSleepRecords(prev => prev.filter(r => r.id !== id));
+    updateLastLocalChange();
+  };
+
   const calculateBabyInfo = () => {
     const birthday = new Date(babyBirthday);
     const now = new Date();
@@ -673,9 +745,9 @@ function AppContent() {
         }
         return m;
       });
-      updateLastLocalChange();
       return newMeals;
     });
+    updateLastLocalChange(); // 移出 updater，确保状态更新正确触发
   };
 
   const addComment = (mealId: string, text: string) => {
@@ -690,24 +762,6 @@ function AppContent() {
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
     updateMeal(mealId, { comments: [...currentMeal.comments, newComment] });
-  };
-
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || !selectedMealId) return;
-    
-    const currentMeal = meals.find(m => m.id === selectedMealId);
-    if (currentMeal && currentMeal.photos.length >= 3) {
-      alert("每餐最多上传3张照片哦");
-      return;
-    }
-
-    const file = files[0];
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      updateMeal(selectedMealId, { photos: [...(currentMeal?.photos || []), reader.result as string] });
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleBabyPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -756,6 +810,7 @@ function AppContent() {
         }
         return m;
       });
+      newMeals = newMeals.sort((a, b) => a.time.localeCompare(b.time));
       setEditingMealId(null);
     } else {
       const newMeal: Meal = {
@@ -770,7 +825,6 @@ function AppContent() {
         milkType: newMealData.type === 'milk' ? newMealData.milkType : undefined,
         milkVolume: newMealData.type === 'milk' ? newMealData.milkVolume : undefined,
         isCompleted: false,
-        photos: [],
         comments: [],
         generatedBy: userRole || '妈妈'
       };
@@ -797,13 +851,11 @@ function AppContent() {
     };
     
     setIngredients(prev => [...prev, newIng]);
-    updateLastLocalChange(); // 立即标记本地修改
+    updateLastLocalChange(); // 立即标记本地修改，阻止轮询覆盖
     setIsAddingIngredient(false);
     
-    // 立即手动触发一次保存，确保新食材第一时间上云
-    setTimeout(() => {
-      saveSharedData();
-    }, 100);
+    // 移除手动 saveSharedData() 调用，完全依赖 useEffect 的自动保存。
+    // 这样可以避免 stale closure 问题，确保保存的是最新的状态。
 
     setNewIngredientData({
       category: 'vegetable',
@@ -814,12 +866,9 @@ function AppContent() {
   };
 
   const deleteIngredient = (id: string) => {
-    const newIngredients = ingredients.filter(i => i.id !== id);
-    const newSafe = safeIngredients.filter(sid => sid !== id);
-    const newAllergic = allergicIngredients.filter(aid => aid !== id);
-    setIngredients(newIngredients);
-    setSafeIngredients(newSafe);
-    setAllergicIngredients(newAllergic);
+    setIngredients(prev => prev.filter(i => i.id !== id));
+    setSafeIngredients(prev => prev.filter(sid => sid !== id));
+    setAllergicIngredients(prev => prev.filter(aid => aid !== id));
     updateLastLocalChange();
   };
 
@@ -837,9 +886,8 @@ function AppContent() {
   };
 
   const deleteMeal = (id: string) => {
-    const newMeals = meals.filter(m => m.id !== id);
-    setMeals(newMeals);
-    setLastLocalChangeTime(Date.now());
+    setMeals(prev => prev.filter(m => m.id !== id));
+    updateLastLocalChange();
   };
 
   const addWeight = () => {
@@ -960,6 +1008,8 @@ function AppContent() {
                 const dayWeight = weightRecords.find(w => w.date === dateStr)?.weight;
                 const dayMeals = meals.filter(m => m.date === dateStr && m.isCompleted);
                 const dayVitamins = vitamins.filter(v => v.date === dateStr && v.isCompleted);
+                const dayPoops = poopRecords.filter(p => p.date === dateStr);
+                const daySleeps = sleepRecords.filter(s => s.date === dateStr);
                 const dayMilkTotal = dayMeals
                   .filter(m => m.type === 'milk')
                   .reduce((sum, m) => sum + (m.actualMilkVolume || m.milkVolume || 0), 0);
@@ -979,8 +1029,13 @@ function AppContent() {
                     }}
                     className={`relative h-20 border rounded-xl flex flex-col items-center justify-start p-1 transition-all cursor-pointer ${
                       isToday ? 'border-orange-500 bg-orange-50/30' : 'border-gray-50 hover:border-orange-200'
-                    } ${isFuture ? 'opacity-30 cursor-not-allowed' : ''} ${historySearchDate === dateStr ? 'ring-2 ring-orange-500 ring-offset-1' : ''}`}
+                    } ${isFuture ? 'opacity-30 cursor-not-allowed' : ''} ${historySearchDate === dateStr ? 'ring-2 ring-orange-500 ring-offset-1' : ''} ${dayPoops.length > 0 ? 'bg-[#78350f]/5 border-[#78350f]/20' : ''}`}
                   >
+                    <div className="absolute top-1 right-1 flex gap-0.5">
+                      {dayPoops.length > 0 && (
+                        <span className="text-[8px]">💩</span>
+                      )}
+                    </div>
                     <span className={`text-[10px] font-black ${isToday ? 'text-orange-600' : 'text-gray-400'}`}>
                       {day.getDate()}
                     </span>
@@ -1077,11 +1132,50 @@ function AppContent() {
                         <span className="text-[11px] font-black text-orange-600">体重 {dayWeight}kg</span>
                       </div>
                     )}
+                    {poopRecords.filter(p => p.date === activeDate).length > 0 && (
+                      <div className="flex items-center gap-1.5 bg-[#78350f]/5 px-2.5 py-1 rounded-xl border border-[#78350f]/10">
+                        <span className="text-[11px]">💩</span>
+                        <span className="text-[11px] font-black text-[#78350f]">排便 {poopRecords.filter(p => p.date === activeDate).length}次</span>
+                      </div>
+                    )}
+                    {sleepRecords.filter(s => s.date === activeDate).length > 0 && (
+                      <div className="flex items-center gap-1.5 bg-[#1e3a8a]/5 px-2.5 py-1 rounded-xl border border-[#1e3a8a]/10">
+                        <span className="text-[11px]">💤</span>
+                        <span className="text-[11px] font-black text-[#1e3a8a]">睡眠 {Math.floor(sleepRecords.filter(s => s.date === activeDate).reduce((sum, s) => sum + s.durationMinutes, 0) / 60)}h{Math.round(sleepRecords.filter(s => s.date === activeDate).reduce((sum, s) => sum + s.durationMinutes, 0) % 60)}m</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
 
               <div className="space-y-3 pt-4 border-t-2 border-gray-50">
+                {/* 护理记录 (排便/睡眠) */}
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  {poopRecords.filter(p => p.date === activeDate).length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">排便记录</p>
+                      {poopRecords.filter(p => p.date === activeDate).sort((a, b) => a.time.localeCompare(b.time)).map(p => (
+                        <div key={p.id} className="flex items-center gap-2 p-2 bg-[#78350f]/5 rounded-xl border border-[#78350f]/10">
+                          <Clock className="w-3 h-3 text-[#78350f]/40" />
+                          <span className="text-[10px] font-black text-[#78350f]">{p.time}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {sleepRecords.filter(s => s.date === activeDate).length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">睡眠记录</p>
+                      {sleepRecords.filter(s => s.date === activeDate).sort((a, b) => a.startTime.localeCompare(b.startTime)).map(s => (
+                        <div key={s.id} className="flex flex-col gap-0.5 p-2 bg-[#1e3a8a]/5 rounded-xl border border-[#1e3a8a]/10">
+                          <span className="text-[10px] font-black text-[#1e3a8a]">{s.startTime}-{s.endTime}</span>
+                          <span className="text-[8px] font-bold text-[#1e3a8a]/40">{Math.floor(s.durationMinutes / 60)}h{Math.round(s.durationMinutes % 60)}m</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">喂养记录</p>
                 {dayMeals.length > 0 ? dayMeals.sort((a, b) => a.time.localeCompare(b.time)).map(meal => (
                   <div 
                     key={meal.id}
@@ -1289,7 +1383,6 @@ function AppContent() {
   const renderPage = () => {
     switch (activePage) {
       case 'home': {
-        const todayStr = getLocalDateString(new Date());
         const todayMeals = meals.filter(m => m.date === todayStr);
         const totalMilk = todayMeals
           .filter(m => m.type === 'milk' && m.isCompleted)
@@ -1414,15 +1507,10 @@ function AppContent() {
                       setAddMealStep(1); 
                       setIsAddingMeal(true); 
                     }}
-                    className="duo-btn-orange w-8 h-8 flex items-center justify-center p-0 rounded-lg"
+                    className="duo-btn-orange w-12 h-12 flex items-center justify-center p-0 rounded-2xl shadow-lg shadow-orange-200 hover:scale-105 active:scale-95 transition-all"
                   >
-                    <Plus className="w-5 h-5" />
+                    <Plus className="w-8 h-8" />
                   </button>
-                  <div className="flex gap-1.5">
-                    {[0, 1, 2, 3, 4, 5, 6].map(i => (
-                      <div key={i} className={`w-2.5 h-2.5 rounded-full ${i === 0 ? 'bg-orange-500' : 'bg-gray-200'}`} />
-                    ))}
-                  </div>
                 </div>
               </div>
               
@@ -1579,7 +1667,6 @@ function AppContent() {
         const planCalendarDays = getDaysInMonth(planCalendarMonth.getFullYear(), planCalendarMonth.getMonth());
         const planFirstDayOfWeek = planCalendarDays[0].getDay();
         const planPaddingDays = Array(planFirstDayOfWeek).fill(null);
-        const todayStr = getLocalDateString(new Date());
 
         return (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-5 space-y-6 pb-24">
@@ -1954,33 +2041,6 @@ function AppContent() {
                 )}
               </div>
 
-              {/* 照片墙 */}
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <p className="text-xs font-black text-gray-400 uppercase tracking-widest">进餐状态 ({meal.photos.length}/3)</p>
-                  {meal.photos.length < 3 && (
-                    <button onClick={() => fileInputRef.current?.click()} className="duo-btn-gray px-3 py-1.5 text-[10px] flex items-center gap-1.5">
-                      <Camera className="w-3.5 h-3.5" /> 上传照片
-                    </button>
-                  )}
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  {meal.photos.map((p, i) => (
-                    <div key={i} className="aspect-square rounded-2xl overflow-hidden bg-gray-100 relative group border-2 border-gray-100 shadow-sm">
-                      <img src={p} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      <button 
-                        onClick={() => updateMeal(meal.id, { photos: meal.photos.filter((_, idx) => idx !== i) })}
-                        className="absolute top-2 right-2 bg-black/50 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                  {meal.photos.length === 0 && <div className="col-span-3 py-10 border-2 border-dashed border-gray-100 rounded-[32px] flex flex-col items-center justify-center text-gray-300 text-xs gap-3 font-bold"><Camera className="w-8 h-8 opacity-20" /> 记录{babyName}吃饭的可爱瞬间</div>}
-                </div>
-                <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handlePhotoUpload} />
-              </div>
-
               {/* 评论区 */}
               <div className="space-y-4 pt-6 border-t-2 border-gray-100">
                 <p className="text-xs font-black text-gray-400 uppercase tracking-widest">家庭讨论</p>
@@ -2126,6 +2186,102 @@ function AppContent() {
                   </div>
                 );
               })}
+            </div>
+          </motion.div>
+        );
+      case 'care':
+        return (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-5 space-y-6">
+            <h2 className="text-3xl font-black text-gray-800 tracking-tight">宝宝护理</h2>
+            
+            <div className="space-y-6">
+              {/* 排便板块 */}
+              <section className="duo-card overflow-hidden bg-white border-2 border-[#78350f]/10 shadow-lg">
+                <div className="bg-[#78350f] p-4 flex justify-between items-center">
+                  <h3 className="text-lg font-black flex items-center gap-2 text-white">
+                    <span className="text-xl">💩</span>
+                    宝宝排便
+                  </h3>
+                  <button 
+                    onClick={() => {
+                      setNewPoopTime(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }));
+                      setIsAddingPoop(true);
+                    }}
+                    className="w-10 h-10 bg-white/20 hover:bg-white/30 text-white flex items-center justify-center p-0 rounded-xl transition-all"
+                  >
+                    <Plus className="w-6 h-6" />
+                  </button>
+                </div>
+                <div className="p-5 space-y-3">
+                  {poopRecords.filter(r => r.date === todayStr).length > 0 ? (
+                    poopRecords.filter(r => r.date === todayStr).sort((a, b) => b.time.localeCompare(a.time)).map(record => (
+                      <div key={record.id} className="flex items-center justify-between bg-[#78350f]/5 p-3 rounded-2xl border border-[#78350f]/10">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-[#78350f]/10 rounded-lg flex items-center justify-center">
+                            <Clock className="w-4 h-4 text-[#78350f]" />
+                          </div>
+                          <div>
+                            <span className="text-sm font-black text-[#78350f]">{record.time}</span>
+                            <p className="text-[10px] font-bold text-[#78350f]/60">记录人: {record.role}</p>
+                          </div>
+                        </div>
+                        <button onClick={() => deletePoopRecord(record.id)} className="w-8 h-8 flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 space-y-2">
+                      <div className="text-4xl opacity-20">💩</div>
+                      <p className="text-xs font-bold text-gray-400 italic">今日暂无排便记录</p>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              {/* 睡眠板块 */}
+              <section className="duo-card overflow-hidden bg-white border-2 border-[#1e3a8a]/10 shadow-lg">
+                <div className="bg-[#1e3a8a] p-4 flex justify-between items-center">
+                  <h3 className="text-lg font-black flex items-center gap-2 text-white">
+                    <span className="text-xl">💤</span>
+                    宝宝睡眠
+                  </h3>
+                  <button 
+                    onClick={() => setIsAddingSleep(true)}
+                    className="w-10 h-10 bg-white/20 hover:bg-white/30 text-white flex items-center justify-center p-0 rounded-xl transition-all"
+                  >
+                    <Plus className="w-6 h-6" />
+                  </button>
+                </div>
+                <div className="p-5 space-y-3">
+                  {sleepRecords.filter(r => r.date === todayStr).length > 0 ? (
+                    sleepRecords.filter(r => r.date === todayStr).sort((a, b) => b.startTime.localeCompare(a.startTime)).map(record => (
+                      <div key={record.id} className="flex flex-col gap-2 bg-[#1e3a8a]/5 p-4 rounded-2xl border border-[#1e3a8a]/10 relative">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-[#1e3a8a]/10 rounded-lg flex items-center justify-center">
+                              <Moon className="w-4 h-4 text-[#1e3a8a]" />
+                            </div>
+                            <span className="text-sm font-black text-[#1e3a8a]">{record.startTime} - {record.endTime}</span>
+                          </div>
+                          <button onClick={() => deleteSleepRecord(record.id)} className="w-8 h-8 flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-between mt-1">
+                          <span className="text-[10px] font-black text-[#1e3a8a]/60">时长: {Math.floor(record.durationMinutes / 60)}h {Math.round(record.durationMinutes % 60)}m</span>
+                          <span className="text-[10px] font-bold text-[#1e3a8a]/40">记录人: {record.role}</span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 space-y-2">
+                      <div className="text-4xl opacity-20">💤</div>
+                      <p className="text-xs font-bold text-gray-400 italic">今日暂无睡眠记录</p>
+                    </div>
+                  )}
+                </div>
+              </section>
             </div>
           </motion.div>
         );
@@ -2467,20 +2623,16 @@ function AppContent() {
           </button>
         </div>
         <NavButton 
-          active={activePage === 'recipes'} 
-          onClick={() => setActivePage('recipes')} 
-          icon={<TrendingUp className="w-7 h-7" />} 
-          label="趋势" 
+          active={activePage === 'care'} 
+          onClick={() => setActivePage('care')} 
+          icon={<Heart className="w-7 h-7" />} 
+          label="护理" 
         />
         <NavButton 
           active={activePage === 'profile'} 
-          onClick={() => {
-            setIsLoggedIn(false);
-            setLoginStep('login');
-            setUserRole(null);
-          }} 
+          onClick={() => setActivePage('profile')} 
           icon={<User className="w-7 h-7" />} 
-          label="退出" 
+          label="我的" 
         />
       </nav>
     </>
@@ -2909,6 +3061,103 @@ function AppContent() {
                       </div>
                     </div>
                   )}
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* 睡眠记录弹窗 */}
+        {isAddingSleep && (
+          <motion.div 
+            key="sleep-modal-overlay"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[100] flex items-end justify-center"
+            onClick={() => setIsAddingSleep(false)}
+          >
+            <motion.div 
+              key="sleep-modal-content"
+              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              className="w-full max-w-md bg-white rounded-t-[40px] p-8 shadow-2xl border-t-4 border-gray-100"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="space-y-8">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-2xl font-black text-gray-800">记录睡眠</h3>
+                  <button onClick={() => setIsAddingSleep(false)} className="text-gray-300 hover:text-red-500"><X className="w-6 h-6" /></button>
+                </div>
+                
+                <div className="space-y-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">入睡时间</label>
+                      <input 
+                        type="time" 
+                        value={newSleepData.startTime}
+                        onChange={(e) => setNewSleepData(prev => ({ ...prev, startTime: e.target.value }))}
+                        className="w-full p-5 bg-gray-50 rounded-[24px] border-2 border-gray-100 font-black text-xl focus:outline-none focus:border-orange-500 transition-colors"
+                      />
+                    </div>
+                    <div className="space-y-3">
+                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">醒来时间</label>
+                      <input 
+                        type="time" 
+                        value={newSleepData.endTime}
+                        onChange={(e) => setNewSleepData(prev => ({ ...prev, endTime: e.target.value }))}
+                        className="w-full p-5 bg-gray-50 rounded-[24px] border-2 border-gray-100 font-black text-xl focus:outline-none focus:border-orange-500 transition-colors"
+                      />
+                    </div>
+                  </div>
+                  
+                  <button 
+                    onClick={addSleepRecord}
+                    className="w-full py-5 rounded-[24px] font-black text-white duo-btn-orange text-lg tracking-widest"
+                  >
+                    保存记录
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* 排便记录弹窗 */}
+        {isAddingPoop && (
+          <motion.div 
+            key="poop-modal-overlay"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[100] flex items-end justify-center"
+            onClick={() => setIsAddingPoop(false)}
+          >
+            <motion.div 
+              key="poop-modal-content"
+              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              className="w-full max-w-md bg-white rounded-t-[40px] p-8 shadow-2xl border-t-4 border-gray-100"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="space-y-8">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-2xl font-black text-gray-800">记录排便</h3>
+                  <button onClick={() => setIsAddingPoop(false)} className="text-gray-300 hover:text-red-500"><X className="w-6 h-6" /></button>
+                </div>
+                
+                <div className="space-y-6">
+                  <div className="space-y-3">
+                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">排便时间</label>
+                    <input 
+                      type="time" 
+                      value={newPoopTime}
+                      onChange={(e) => setNewPoopTime(e.target.value)}
+                      className="w-full p-5 bg-gray-50 rounded-[24px] border-2 border-gray-100 font-black text-xl focus:outline-none focus:border-orange-500 transition-colors"
+                    />
+                  </div>
+                  
+                  <button 
+                    onClick={addPoopRecord}
+                    className="w-full py-5 rounded-[24px] font-black text-white bg-[#78350f] hover:bg-[#5d2a0c] text-lg tracking-widest shadow-[0_4px_0_0_#5d2a0c] active:translate-y-1 active:shadow-none transition-all"
+                  >
+                    保存记录
+                  </button>
                 </div>
               </div>
             </motion.div>
