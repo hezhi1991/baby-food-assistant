@@ -1221,7 +1221,7 @@ function AppContent() {
 
   // --- 辅助函数 ---
   const getMealOrder = (mealId: string, date: string, allMeals: Meal[]) => {
-    const dayMeals = allMeals
+    const dayMeals = (allMeals || [])
       .filter(m => m.date === date)
       .sort((a, b) => a.time.localeCompare(b.time));
     return dayMeals.findIndex(m => m.id === mealId) + 1;
