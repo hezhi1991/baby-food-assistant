@@ -175,6 +175,7 @@ interface Meal {
   milkVolume?: number; // 奶量：毫升
   actualMilkVolume?: number; // 实际奶量：毫升
   isCompleted: boolean;
+  photos: string[]; // 辅食照片
   comments: Comment[];
   generatedBy: FamilyRole; // 谁生成的计划
   completedBy?: FamilyRole; // 谁执行的打卡
@@ -837,6 +838,7 @@ function AppContent() {
         milkType: newMealData.type === 'milk' ? newMealData.milkType : undefined,
         milkVolume: newMealData.type === 'milk' ? newMealData.milkVolume : undefined,
         isCompleted: false,
+        photos: [],
         comments: [],
         generatedBy: userRole || '妈妈'
       };
@@ -1445,7 +1447,7 @@ function AppContent() {
                   <div className="flex items-center gap-1 bg-orange-50 px-2 py-0.5 rounded-lg border border-orange-100 cursor-pointer hover:bg-orange-100 transition-colors" onClick={() => setIsAddingWeight(true)}>
                     <Scale className="w-3 h-3 text-orange-500" />
                     <span className="text-[10px] font-black text-orange-600">
-                      {weightRecords.length > 0 ? `${weightRecords[weightRecords.length - 1].weight}kg` : '记录体重'}
+                      {weightRecords?.length > 0 ? `${weightRecords[weightRecords.length - 1].weight}kg` : '记录体重'}
                     </span>
                   </div>
                 </div>
@@ -1627,7 +1629,7 @@ function AppContent() {
                     </div>
                     
                     {/* 首页照片展示 */}
-                    {meal.photos.length > 0 && (
+                    {meal.photos?.length > 0 && (
                       <div className="flex gap-3 overflow-x-auto no-scrollbar py-1">
                         {meal.photos.map((p, idx) => (
                           <div key={idx} className="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 border-2 border-gray-100 shadow-sm">
@@ -1723,8 +1725,8 @@ function AppContent() {
                   const isToday = dateStr === todayStr;
                   const dayMeals = meals.filter(m => m.date === dateStr);
                   const dayVitamins = vitamins.filter(v => v.date === dateStr);
-                  const milkCount = dayMeals.filter(m => m.type === 'milk').length;
-                  const foodCount = dayMeals.filter(m => m.type === 'food').length;
+                  const milkCount = (dayMeals || []).filter(m => m.type === 'milk').length;
+                  const foodCount = (dayMeals || []).filter(m => m.type === 'food').length;
                   
                   const testingFoods = dayMeals
                     .flatMap(m => m.foods)
@@ -1750,7 +1752,7 @@ function AppContent() {
                       </span>
                       
                       <div className="mt-auto w-full flex flex-col items-center gap-0.5 pb-0.5">
-                        {uniqueTestingFoods.length > 0 && (
+                        {(uniqueTestingFoods || []).length > 0 && (
                           <div className="flex flex-wrap justify-center gap-0.5 mb-0.5">
                             {uniqueTestingFoods.map(f => {
                               const mealWithThisFood = dayMeals.find(m => (m.foods || []).some(food => food.foodId === f?.id && food.isTesting));
@@ -1765,7 +1767,7 @@ function AppContent() {
                             })}
                           </div>
                         )}
-                        {dayVitamins.length > 0 && (
+                        {(dayVitamins || []).length > 0 && (
                           <div className="flex gap-0.5 mb-0.5">
                             {dayVitamins.map(v => (
                               <span key={v.id} className={`text-[6px] font-black px-1 rounded-full border ${v.isCompleted ? 'bg-purple-100 text-purple-600 border-purple-200' : 'bg-gray-50 text-gray-400 border-gray-100'}`}>
