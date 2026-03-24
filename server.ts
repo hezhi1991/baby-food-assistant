@@ -210,12 +210,14 @@ async function startServer() {
 
   // 4. 获取共享数据版本 (极小，用于轮询)
   app.get("/api/get-data-version", (req, res) => {
+    console.log("[API] GET /api/get-data-version");
     const db = readDB();
     res.json({ success: true, version: db.sharedData.lastUpdated || 0 });
   });
 
   // 5. 获取共享数据 (不包含大图)
   app.get("/api/get-shared-data", (req, res) => {
+    console.log("[API] GET /api/get-shared-data");
     const db = readDB();
     const { babyPhoto, ...restData } = db.sharedData;
     

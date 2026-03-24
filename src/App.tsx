@@ -790,6 +790,18 @@ function AppContent() {
     reader.readAsDataURL(file);
   };
 
+  const openAddMeal = (date?: string) => {
+    if (typeof date === 'string' && date) {
+      setSelectedDateForPlan(date);
+    } else {
+      setSelectedDateForPlan(todayStr);
+    }
+    setEditingMealId(null);
+    setNewMealData({ time: '12:00', type: 'food', foods: [] });
+    setAddMealStep(1);
+    setIsAddingMeal(true);
+  };
+
   const addMeal = () => {
     let newMeals;
     if (editingMealId) {
@@ -1501,12 +1513,7 @@ function AppContent() {
                 </h3>
                 <div className="flex items-center gap-3">
                   <button 
-                    onClick={() => { 
-                      setSelectedDateForPlan(todayStr); 
-                      setEditingMealId(null); 
-                      setAddMealStep(1); 
-                      setIsAddingMeal(true); 
-                    }}
+                    onClick={() => openAddMeal()}
                     className="duo-btn-orange w-12 h-12 flex items-center justify-center p-0 rounded-2xl shadow-lg shadow-orange-200 hover:scale-105 active:scale-95 transition-all"
                   >
                     <Plus className="w-8 h-8" />
@@ -1673,7 +1680,7 @@ function AppContent() {
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-3xl font-black text-gray-800 tracking-tight">喂养计划</h2>
               <button 
-                onClick={() => { setEditingMealId(null); setAddMealStep(1); setIsAddingMeal(true); }}
+                onClick={() => openAddMeal(selectedDateForPlan)}
                 className="duo-btn-orange w-12 h-12 flex items-center justify-center p-0"
               >
                 <Plus className="w-7 h-7" />
@@ -1867,10 +1874,7 @@ function AppContent() {
                     </div>
                     <p className="text-gray-400 font-black text-sm mb-4">今天还没有安排餐次哦</p>
                     <button 
-                      onClick={() => {
-                        setNewMealData(prev => ({ ...prev, date: selectedDateForPlan }));
-                        setIsAddingMeal(true);
-                      }}
+                      onClick={() => openAddMeal(selectedDateForPlan)}
                       className="px-6 py-3 duo-btn-orange text-sm"
                     >
                       立即添加
@@ -3037,13 +3041,6 @@ function AppContent() {
                         {addMealStep < 5 ? (
                           <button 
                             onClick={() => {
-                              if (addMealStep === 2) {
-                                const hasGrain = (newMealData.foods || []).some(f => ingredients.find(i => i.id === f.foodId)?.category === 'grain');
-                                if (!hasGrain) {
-                                  alert("请先选择一种五谷哦");
-                                  return;
-                                }
-                              }
                               setAddMealStep(prev => prev + 1);
                             }}
                             className="flex-1 py-5 rounded-[24px] font-black text-white duo-btn-orange text-lg tracking-widest"
