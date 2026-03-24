@@ -106,6 +106,7 @@ const getLocalDateString = (date: Date) => {
 
 // --- 类型定义 ---
 type Page = 'home' | 'recipes' | 'wiki' | 'ai' | 'profile' | 'meal-detail' | 'plan' | 'history' | 'care' | 'baby-selection';
+type LoginStep = 'login' | 'code' | 'baby-setup' | 'role' | 'member-selection';
 type FamilyRole = '妈妈' | '爸爸' | '爷爷' | '奶奶' | '外公' | '外婆' | '月嫂' | '其他';
 type MealType = 'milk' | 'food';
 
@@ -227,7 +228,7 @@ function AppContent() {
 // --- 1. 状态管理 (全部移到顶部，确保后续函数闭包能正确访问) ---
   const [email, setEmail] = useState<string | null>(localStorage.getItem('baby_food_email'));
   const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem('baby_food_email'));
-  const [loginStep, setLoginStep] = useState<'login' | 'code' | 'baby-setup' | 'role'>('login');
+  const [loginStep, setLoginStep] = useState<LoginStep>('login');
   const [loginEmail, setLoginEmail] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
   const [isSendingCode, setIsSendingCode] = useState(false);
@@ -242,10 +243,11 @@ function AppContent() {
   const [babyPhoto, setBabyPhoto] = useState<string | null>(null);
   const [babyName, setBabyName] = useState<string>('宝宝');
   const [babyBirthday, setBabyBirthday] = useState<string>('2025-08-07');
-  const [userRole, setUserRole] = useState<FamilyRole | null>(null);
+  const [userRole, setUserRole] = useState<FamilyRole | null>(localStorage.getItem('baby_food_role') as FamilyRole || null);
   const [currentBabyId, setCurrentBabyId] = useState<string | null>(null);
   const [userBabies, setUserBabies] = useState<any[]>([]);
   const [babyInfo, setBabyInfo] = useState<any | null>(null);
+  const [members, setMembers] = useState<any[]>([]);
   const [isAddingMember, setIsAddingMember] = useState(false);
   const [newMemberData, setNewMemberData] = useState({ username: '', role: '爸爸' as FamilyRole });
 
@@ -332,12 +334,44 @@ function AppContent() {
         babyPhoto: data.babyPhoto || null,
         role: data.role
       });
+      setUserRole(data.role);
+      localStorage.setItem('baby_food_role', data.role);
       setLoginStep('login');
       setIsLoggedIn(true);
       updateIsEditingBabyProfile(false);
     } catch (error) {
       console.error("Failed to save profile:", error);
     }
+  };
+
+  const handleAddMember = async () => {
+    if (!email || !newMemberData.username || !newMemberData.role) {
+      alert('请填写完整信息');
+      return;
+    }
+    try {
+      const response = await fetch('/api/add-member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, username: newMemberData.username, role: newMemberData.role })
+      });
+      const result = await response.json();
+      if (result.success) {
+        setMembers(result.members);
+        setIsAddingMember(false);
+        setNewMemberData({ username: '', role: '爸爸' });
+      } else {
+        alert(result.message || '添加失败');
+      }
+    } catch (error) {
+      console.error("Failed to add member:", error);
+      alert('网络错误，请重试');
+    }
+  };
+
+  const handleSwitchRole = (role: FamilyRole) => {
+    setUserRole(role);
+    localStorage.setItem('baby_food_role', role);
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -426,7 +460,10 @@ function AppContent() {
         setBabyName(data.profile?.babyName || '宝宝');
         setBabyBirthday(data.profile?.babyBirthday || '2025-08-07');
         setBabyPhoto(data.profile?.babyPhoto || null);
-        setUserRole(data.profile?.role || '妈妈');
+        if (!userRole) {
+          setUserRole(data.profile?.role || '妈妈');
+        }
+        setMembers(data.members || []);
         setMeals(data.meals || []);
         setVitamins(data.vitamins || []);
         setWeightRecords(data.weightRecords || []);
@@ -512,7 +549,26 @@ function AppContent() {
       if (result.success) {
         localStorage.setItem('baby_food_email', loginEmail);
         setEmail(loginEmail);
-        setIsLoggedIn(true);
+        
+        // 获取用户数据以决定下一步
+        const dataRes = await fetch(`/api/get-user-data?email=${encodeURIComponent(loginEmail)}`);
+        const dataResult = await dataRes.json();
+        
+        if (dataResult.success && dataResult.data) {
+          const data = dataResult.data;
+          setMembers(data.members || []);
+          
+          // 如果是默认数据，说明是新用户
+          if (data.profile?.babyName === '宝宝') {
+            setLoginStep('baby-setup');
+          } else if (data.members && data.members.length > 1) {
+            setLoginStep('member-selection');
+          } else {
+            setIsLoggedIn(true);
+          }
+        } else {
+          setLoginStep('baby-setup');
+        }
       } else {
         alert(result.message);
       }
@@ -2178,7 +2234,7 @@ function AppContent() {
             </div>
 
             {/* 成员管理 (仅主账号可见) */}
-            {babyInfo?.owner === email && (
+            {email && (
               <div className="duo-card p-6 bg-white space-y-4">
                 <div className="flex justify-between items-center">
                   <h3 className="text-sm font-black text-gray-700 uppercase tracking-widest">家庭成员 (子账号)</h3>
@@ -2190,22 +2246,31 @@ function AppContent() {
                   </button>
                 </div>
                 <div className="space-y-3">
-                  {babyInfo?.members?.map((m: any) => (
-                    <div key={m.username} className="flex items-center justify-between bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                  {members.map((m: any) => (
+                    <div 
+                      key={m.username} 
+                      onClick={() => handleSwitchRole(m.role)}
+                      className={`flex items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer active:scale-98 ${userRole === m.role ? 'bg-orange-50 border-orange-200 ring-2 ring-orange-100' : 'bg-gray-50 border-gray-100 hover:bg-gray-100'}`}
+                    >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-sm font-black text-gray-400 border border-gray-100 shadow-sm">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black border shadow-sm ${userRole === m.role ? 'bg-white text-orange-500 border-orange-100' : 'bg-white text-gray-400 border-gray-100'}`}>
                           {m.role[0]}
                         </div>
                         <div>
-                          <p className="text-sm font-black text-gray-700">{m.username}</p>
+                          <p className={`text-sm font-black ${userRole === m.role ? 'text-orange-600' : 'text-gray-700'}`}>{m.username}</p>
                           <p className="text-[10px] font-bold text-gray-400">{m.role}</p>
                         </div>
                       </div>
-                      {m.username === babyInfo?.owner && (
-                        <span className="text-[10px] font-black bg-orange-100 text-orange-600 px-3 py-1 rounded-full border border-orange-200">
-                          主账号
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {m.isPrimary && (
+                          <span className="text-[10px] font-black bg-orange-100 text-orange-600 px-3 py-1 rounded-full border border-orange-200">
+                            主账号
+                          </span>
+                        )}
+                        {userRole === m.role && (
+                          <CheckCircle2 className="w-5 h-5 text-orange-500" />
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -2245,7 +2310,7 @@ function AppContent() {
                   </div>
                   <div className="flex gap-3 pt-4">
                     <button onClick={() => setIsAddingMember(false)} className="flex-1 py-4 duo-btn-gray text-gray-500">取消</button>
-                    <button onClick={() => setIsAddingMember(false)} className="flex-1 py-4 duo-btn-orange">确认添加</button>
+                    <button onClick={handleAddMember} className="flex-1 py-4 duo-btn-orange">确认添加</button>
                   </div>
                 </motion.div>
               </div>
@@ -2508,6 +2573,38 @@ function AppContent() {
                 保存并继续
               </button>
             </div>
+          </div>
+        </motion.div>
+      );
+    }
+
+    if (loginStep === 'member-selection') {
+      return (
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="h-full flex flex-col px-8 pt-20"
+        >
+          <div className="mb-12">
+            <h1 className="text-4xl font-black text-gray-800 mb-3">谁在使用应用？</h1>
+            <p className="text-gray-400 font-bold">选择您的角色以进入宝宝的成长空间</p>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            {members.map(m => (
+              <button 
+                key={m.username}
+                onClick={() => {
+                  handleSwitchRole(m.role);
+                  setIsLoggedIn(true);
+                }}
+                className="flex flex-col items-center gap-3 p-6 bg-gray-50 rounded-[32px] border-2 border-gray-100 hover:border-orange-500 hover:bg-orange-50 transition-all group"
+              >
+                <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center text-4xl shadow-sm group-hover:scale-110 transition-transform">
+                  {m.role[0]}
+                </div>
+                <span className="font-black text-lg text-gray-700 group-hover:text-orange-600">{m.role}</span>
+              </button>
+            ))}
           </div>
         </motion.div>
       );

@@ -115,6 +115,7 @@ async function startServer() {
     if (!db.users[email]) {
       db.users[email] = {
         profile: { babyName: "宝宝", babyBirthday: "2025-08-07" },
+        members: [{ username: email, role: "妈妈", isPrimary: true }],
         meals: [],
         vitamins: [],
         weightRecords: [],
@@ -123,6 +124,10 @@ async function startServer() {
         safeIngredients: [],
         allergicIngredients: []
       };
+      writeDB(db);
+    } else if (!db.users[email].members) {
+      // 为老用户兼容新字段
+      db.users[email].members = [{ username: email, role: db.users[email].profile.role || "妈妈", isPrimary: true }];
       writeDB(db);
     }
 
@@ -157,6 +162,26 @@ async function startServer() {
     writeDB(db);
 
     res.json({ success: true, message: "保存成功" });
+  });
+
+  // 5. 添加家庭成员
+  app.post('/api/add-member', (req, res) => {
+    const { email, username, role } = req.body;
+    if (!email || !username || !role) return res.status(400).json({ success: false, message: "参数不全" });
+
+    const db = readDB();
+    if (!db.users[email]) return res.status(404).json({ success: false, message: "用户不存在" });
+
+    if (!db.users[email].members) db.users[email].members = [];
+    
+    // 检查是否已存在
+    const exists = db.users[email].members.find((m: any) => m.username === username);
+    if (exists) return res.status(400).json({ success: false, message: "该成员已存在" });
+
+    db.users[email].members.push({ username, role, isPrimary: false });
+    writeDB(db);
+
+    res.json({ success: true, message: "添加成功", members: db.users[email].members });
   });
 
   // --- Vite 中间件配置 ---
