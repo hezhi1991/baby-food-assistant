@@ -2245,7 +2245,7 @@ function AppContent() {
                   </div>
                   <div className="flex gap-3 pt-4">
                     <button onClick={() => setIsAddingMember(false)} className="flex-1 py-4 duo-btn-gray text-gray-500">取消</button>
-                    <button onClick={handleAddMember} className="flex-1 py-4 duo-btn-orange">确认添加</button>
+                    <button onClick={() => setIsAddingMember(false)} className="flex-1 py-4 duo-btn-orange">确认添加</button>
                   </div>
                 </motion.div>
               </div>
@@ -2739,7 +2739,7 @@ function AppContent() {
                         if (data.success) {
                           updateIsEditingBabyProfile(false);
                           updateIsSaving(false);
-                          if (currentBabyId) await fetchBabyData(currentBabyId);
+                          // if (currentBabyId) await fetchBabyData(currentBabyId);
                         } else {
                         alert(data.message || "保存失败");
                       }
