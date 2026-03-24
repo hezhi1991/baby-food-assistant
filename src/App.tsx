@@ -407,7 +407,7 @@ function AppContent() {
         return;
       }
 
-      if (result.success) {
+      if (result.success && result.data) {
         const data = result.data;
         setBabyName(data.babyName || '宝宝');
         setBabyBirthday(data.babyBirthday || '2025-08-07');
@@ -416,7 +416,7 @@ function AppContent() {
         // 这样即使服务器返回的数据有问题，本地新加的食材也不会消失
         if (data.ingredients && Array.isArray(data.ingredients)) {
           setIngredients(prev => {
-            const merged = [...prev];
+            const merged = [...(prev || [])];
             data.ingredients.forEach((newIng: Ingredient) => {
               const exists = merged.find(i => i.id === newIng.id);
               if (!exists) {
@@ -924,7 +924,7 @@ function AppContent() {
   };
 
   // 提醒逻辑：查找最近一小时内的餐次
-  const upcomingMeal = meals.find(m => {
+  const upcomingMeal = (meals || []).find(m => {
     if (m.isCompleted) return false;
     const mealTime = new Date(`${m.date}T${m.time}`);
     const now = new Date();
@@ -937,7 +937,7 @@ function AppContent() {
     const today = getLocalDateString(new Date());
     
     // 准备图表数据
-    const chartData = weightRecords
+    const chartData = (weightRecords || [])
       .filter(w => w.date <= today)
       .map(w => ({
         date: w.date.split('-').slice(1).join('/'),
@@ -945,8 +945,8 @@ function AppContent() {
       }));
 
     // 按日期分组的历史记录，且不超过今日
-    let historyDates: string[] = (Array.from(new Set(meals.map(m => m.date))) as string[])
-      .filter(d => d <= today)
+    let historyDates: string[] = (Array.from(new Set((meals || []).map(m => m.date))) as string[])
+      .filter(d => d && d <= today)
       .sort((a, b) => (b as string).localeCompare(a as string));
 
     // 如果有搜索日期，且该日期不在列表中（比如当天没记录），则手动加入
@@ -956,14 +956,14 @@ function AppContent() {
 
     // 过滤搜索结果
     const activeDate = historySearchDate || today;
-    const dayMeals = meals.filter(m => m.date === activeDate);
+    const dayMeals = (meals || []).filter(m => m.date === activeDate);
     const dayMilk = dayMeals
       .filter(m => m.type === 'milk' && m.isCompleted)
       .reduce((sum, m) => sum + (m.actualMilkVolume || m.milkVolume || 0), 0);
     const dayFood = dayMeals
       .filter(m => m.type === 'food' && m.isCompleted)
       .reduce((sum, m) => sum + (m.foods || []).reduce((s, f) => s + (f.actualQuantity ?? f.quantity), 0), 0);
-    const dayWeight = weightRecords.find(w => w.date === activeDate)?.weight;
+    const dayWeight = (weightRecords || []).find(w => w.date === activeDate)?.weight;
 
     // 日历逻辑
     const getDaysInMonth = (year: number, month: number) => {
@@ -1019,11 +1019,11 @@ function AppContent() {
               {calendarDays.map(day => {
                 const dateStr = getLocalDateString(day);
                 const isToday = dateStr === today;
-                const dayWeight = weightRecords.find(w => w.date === dateStr)?.weight;
-                const dayMeals = meals.filter(m => m.date === dateStr && m.isCompleted);
-                const dayVitamins = vitamins.filter(v => v.date === dateStr && v.isCompleted);
-                const dayPoops = poopRecords?.filter(p => p.date === dateStr) || [];
-                const daySleeps = sleepRecords?.filter(s => s.date === dateStr) || [];
+                const dayWeight = (weightRecords || []).find(w => w.date === dateStr)?.weight;
+                const dayMeals = (meals || []).filter(m => m.date === dateStr && m.isCompleted);
+                const dayVitamins = (vitamins || []).filter(v => v.date === dateStr && v.isCompleted);
+                const dayPoops = (poopRecords || []).filter(p => p.date === dateStr);
+                const daySleeps = (sleepRecords || []).filter(s => s.date === dateStr);
                 const dayMilkTotal = dayMeals
                   .filter(m => m.type === 'milk')
                   .reduce((sum, m) => sum + (m.actualMilkVolume || m.milkVolume || 0), 0);
@@ -1251,7 +1251,7 @@ function AppContent() {
       { month: 12, weight: 9.6 }
     ];
 
-    const growthData = weightRecords.map(r => {
+    const growthData = (weightRecords || []).map(r => {
       const recordDate = new Date(r.date);
       const birthDate = new Date(); // 假设当前月龄是基于当前日期回推的
       birthDate.setMonth(birthDate.getMonth() - babyInfo.months);
@@ -1274,8 +1274,8 @@ function AppContent() {
     ];
 
     const progressStats = categories.map(cat => {
-      const total = ingredients.filter(i => i.category === cat.id).length;
-      const safe = ingredients.filter(i => i.category === cat.id && safeIngredients.includes(i.id)).length;
+      const total = (ingredients || []).filter(i => i.category === cat.id).length;
+      const safe = (ingredients || []).filter(i => i.category === cat.id && (safeIngredients || []).includes(i.id)).length;
       return { ...cat, total, safe, percent: total > 0 ? (safe / total) * 100 : 0 };
     });
 
@@ -1284,7 +1284,7 @@ function AppContent() {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const dateStr = getLocalDateString(d);
-      const dayMeals = meals.filter(m => m.date === dateStr && m.isCompleted);
+      const dayMeals = (meals || []).filter(m => m.date === dateStr && m.isCompleted);
       const milk = dayMeals.filter(m => m.type === 'milk').reduce((s, m) => s + (m.actualMilkVolume || m.milkVolume || 0), 0);
       const food = dayMeals.filter(m => m.type === 'food').reduce((s, m) => s + (m.foods || []).reduce((fs, f) => fs + (f.actualQuantity ?? f.quantity), 0), 0);
       return { date: dateStr.split('-')[2], milk, food };
@@ -1397,7 +1397,7 @@ function AppContent() {
   const renderPage = () => {
     switch (activePage) {
       case 'home': {
-        const todayMeals = meals.filter(m => m.date === todayStr);
+        const todayMeals = (meals || []).filter(m => m.date === todayStr);
         const totalMilk = todayMeals
           .filter(m => m.type === 'milk' && m.isCompleted)
           .reduce((sum, m) => sum + (m.actualMilkVolume || m.milkVolume || 0), 0);
@@ -1524,7 +1524,7 @@ function AppContent() {
               </div>
               
               <div className="space-y-4">
-                {meals.filter(m => m.date === todayStr).map(meal => (
+                {todayMeals.length > 0 ? todayMeals.map(meal => (
                   <div 
                     key={meal.id} 
                     className={`duo-card p-5 flex flex-col gap-3 transition-all relative overflow-hidden ${meal.isCompleted ? 'bg-green-50/30 border-green-200 border-bottom-width-4' : 'bg-white'}`}
@@ -1540,7 +1540,7 @@ function AppContent() {
                         <div className="flex flex-col items-center w-14">
                           <div className={`text-lg font-black ${meal.isCompleted ? 'text-green-600' : 'text-gray-800'}`}>{meal.time}</div>
                           <div className="text-[10px] font-black text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md mt-1 uppercase tracking-tighter">
-                            第{getMealOrder(meal.id, todayStr, meals)}餐
+                            第{getMealOrder(meal.id, todayStr, (meals || []))}餐
                           </div>
                         </div>
                         <div className="flex-1">
@@ -1639,7 +1639,12 @@ function AppContent() {
                       </div>
                     )}
                   </div>
-                ))}
+                )) : (
+                  <div className="text-center py-12 bg-gray-50 rounded-[32px] border-2 border-dashed border-gray-200">
+                    <div className="text-4xl mb-3 opacity-20">🥣</div>
+                    <p className="text-sm font-black text-gray-400 italic">当日没有记录哦</p>
+                  </div>
+                )}
               </div>
             </section>
 
@@ -1723,13 +1728,13 @@ function AppContent() {
                   const dateStr = getLocalDateString(day);
                   const isActive = selectedDateForPlan === dateStr;
                   const isToday = dateStr === todayStr;
-                  const dayMeals = meals.filter(m => m.date === dateStr);
-                  const dayVitamins = vitamins.filter(v => v.date === dateStr);
+                  const dayMeals = (meals || []).filter(m => m.date === dateStr);
+                  const dayVitamins = (vitamins || []).filter(v => v.date === dateStr);
                   const milkCount = (dayMeals || []).filter(m => m.type === 'milk').length;
                   const foodCount = (dayMeals || []).filter(m => m.type === 'food').length;
                   
                   const testingFoods = dayMeals
-                    .flatMap(m => m.foods)
+                    .flatMap(m => m.foods || [])
                     .filter(f => f.isTesting)
                     .map(f => ingredients.find(i => i.id === f.foodId))
                     .filter(Boolean);
@@ -1800,12 +1805,12 @@ function AppContent() {
                   当日安排
                 </h3>
                 <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest bg-gray-100 px-2 py-1 rounded-lg">
-                  {meals.filter(m => m.date === selectedDateForPlan).length} 场餐次
+                  {(meals || []).filter(m => m.date === selectedDateForPlan).length} 场餐次
                 </span>
               </div>
               
               <div className="space-y-4">
-                {meals.filter(m => m.date === selectedDateForPlan).map(meal => (
+                {(meals || []).filter(m => m.date === selectedDateForPlan).length > 0 ? (meals || []).filter(m => m.date === selectedDateForPlan).map(meal => (
                   <motion.div 
                     layout
                     key={meal.id} 
@@ -1816,7 +1821,7 @@ function AppContent() {
                     
                     <div className="flex flex-col items-center justify-center w-16 h-16 bg-gray-50 rounded-2xl border-2 border-gray-100 group-hover:border-orange-200 transition-colors">
                       <span className="text-lg font-black text-gray-800">{meal.time}</span>
-                      <span className="text-[10px] font-black text-gray-400 mt-0.5">第{getMealOrder(meal.id, selectedDateForPlan, meals)}餐</span>
+                      <span className="text-[10px] font-black text-gray-400 mt-0.5">第{getMealOrder(meal.id, selectedDateForPlan, (meals || []))}餐</span>
                     </div>
 
                     <div className="flex-1 cursor-pointer" onClick={() => openEditMeal(meal)}>
@@ -1863,9 +1868,7 @@ function AppContent() {
                       <ChevronRight className="w-5 h-5 text-gray-200" />
                     </div>
                   </motion.div>
-                ))}
-                
-                {meals.filter(m => m.date === selectedDateForPlan).length === 0 && (
+                )) : (
                   <motion.div 
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -1890,7 +1893,7 @@ function AppContent() {
       }
 
       case 'meal-detail':
-        const meal = meals.find(m => m.id === selectedMealId);
+        const meal = (meals || []).find(m => m.id === selectedMealId);
         if (!meal) return null;
         return (
           <motion.div initial={{ x: 100 }} animate={{ x: 0 }} className="p-5 space-y-6">
@@ -1914,7 +1917,7 @@ function AppContent() {
                   </div>
                   <h2 className="text-3xl font-black text-gray-800 leading-tight">
                     {meal.time} {meal.type === 'milk' ? '喂奶' : '辅食餐'}
-                    <span className="text-sm font-black text-orange-500 ml-2 bg-orange-50 px-2 py-1 rounded-lg border border-orange-100">第{getMealOrder(meal.id, meal.date, meals)}餐</span>
+                    <span className="text-sm font-black text-orange-500 ml-2 bg-orange-50 px-2 py-1 rounded-lg border border-orange-100">第{getMealOrder(meal.id, meal.date, (meals || []))}餐</span>
                   </h2>
                   <div className="flex flex-col gap-1 mt-2">
                     <p className="text-gray-400 font-bold text-sm">{meal.date}</p>
@@ -1994,10 +1997,10 @@ function AppContent() {
                             </div>
                             <div className="flex gap-2">
                               <button onClick={(e) => { e.stopPropagation(); toggleAllergy(f.foodId); }} className="hover:scale-110 transition-transform">
-                                <AlertCircle className={`w-5 h-5 ${isAllergic ? 'fill-red-500 text-white' : 'text-gray-300'}`} />
+                                <AlertCircle className={`w-5 h-5 ${(allergicIngredients || []).includes(f.foodId) ? 'fill-red-500 text-white' : 'text-gray-300'}`} />
                               </button>
                               <button onClick={(e) => { e.stopPropagation(); toggleSafe(f.foodId); }} className="hover:scale-110 transition-transform">
-                                <CheckCircle2 className={`w-5 h-5 ${isSafe ? 'text-green-500' : 'text-gray-300'}`} />
+                                <CheckCircle2 className={`w-5 h-5 ${(safeIngredients || []).includes(f.foodId) ? 'text-green-500' : 'text-gray-300'}`} />
                               </button>
                             </div>
                           </div>
@@ -2039,7 +2042,7 @@ function AppContent() {
                     }) : <span className="text-gray-400 font-bold italic">待添加食材</span>
                   )}
                 </div>
-                {(meal.foods || []).some(f => allergicIngredients.includes(f.foodId)) && (
+                {(meal.foods || []).some(f => (allergicIngredients || []).includes(f.foodId)) && (
                   <div className="bg-red-50 p-4 rounded-2xl flex items-start gap-3 text-red-600 text-xs border-2 border-red-100">
                     <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
                     <p className="font-bold leading-relaxed">警告：本餐包含{babyName}过敏的食材！请立即停止喂食并观察反应。</p>
@@ -2146,19 +2149,19 @@ function AppContent() {
 
             {/* 食材列表 */}
             <div className="grid grid-cols-1 gap-4">
-              {ingredients.filter(item => {
+              {(ingredients || []).filter(item => {
                 const matchesSearch = item.name.includes(searchQuery);
                 const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
                 
                 let matchesStatus = true;
-                if (selectedAllergyStatus === 'safe') matchesStatus = safeIngredients.includes(item.id);
-                else if (selectedAllergyStatus === 'allergic') matchesStatus = allergicIngredients.includes(item.id);
-                else if (selectedAllergyStatus === 'untested') matchesStatus = !safeIngredients.includes(item.id) && !allergicIngredients.includes(item.id);
+                if (selectedAllergyStatus === 'safe') matchesStatus = (safeIngredients || []).includes(item.id);
+                else if (selectedAllergyStatus === 'allergic') matchesStatus = (allergicIngredients || []).includes(item.id);
+                else if (selectedAllergyStatus === 'untested') matchesStatus = !(safeIngredients || []).includes(item.id) && !(allergicIngredients || []).includes(item.id);
                 
                 return matchesSearch && matchesCategory && matchesStatus;
               }).map(item => {
-                const isAllergic = allergicIngredients.includes(item.id);
-                const isSafe = safeIngredients.includes(item.id);
+                const isAllergic = (allergicIngredients || []).includes(item.id);
+                const isSafe = (safeIngredients || []).includes(item.id);
                 return (
                   <div key={item.id} className={`duo-card p-5 flex items-center gap-5 transition-all ${isAllergic ? 'bg-red-50 border-red-200' : (isSafe ? 'bg-green-50/30 border-green-200' : 'bg-white')}`}
                        style={isAllergic ? { borderBottomColor: '#ef4444' } : (isSafe ? { borderBottomColor: '#46a302' } : {})}>
@@ -2949,7 +2952,7 @@ function AppContent() {
                       </div>
 
                       <div className="grid grid-cols-2 gap-4 max-h-[40vh] overflow-y-auto p-1 no-scrollbar">
-                        {ingredients.filter(ing => {
+                        {(ingredients || []).filter(ing => {
                           if (addMealStep === 2) return ing.category === 'grain';
                           if (addMealStep === 3) return ing.category === 'protein';
                           if (addMealStep === 4) return ing.category === 'vegetable';
@@ -2958,8 +2961,8 @@ function AppContent() {
                         }).map(ing => {
                           const mealFood = (newMealData.foods || []).find(f => f.foodId === ing.id);
                           const isSelected = !!mealFood;
-                          const isAllergic = allergicIngredients.includes(ing.id);
-                          const isSafe = safeIngredients.includes(ing.id);
+                          const isAllergic = (allergicIngredients || []).includes(ing.id);
+                          const isSafe = (safeIngredients || []).includes(ing.id);
                           return (
                             <div 
                               key={ing.id}
@@ -2980,7 +2983,7 @@ function AppContent() {
                                       return { ...prev, foods: (prev.foods || []).filter(f => f.foodId !== ing.id) };
                                     } else {
                                       if (addMealStep === 2) {
-                                        const otherGrains = ingredients.filter(i => i.category === 'grain').map(i => i.id);
+                                        const otherGrains = (ingredients || []).filter(i => i.category === 'grain').map(i => i.id);
                                         return { 
                                           ...prev, 
                                           foods: [...(prev.foods || []).filter(f => !otherGrains.includes(f.foodId)), { foodId: ing.id, quantity: 2.5 }] 
