@@ -48,50 +48,8 @@ import {
 } from 'recharts';
 
 // --- Error Handling ---
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId: string | undefined;
-    email: string | null | undefined;
-    emailVerified: boolean | undefined;
-    isAnonymous: boolean | undefined;
-    tenantId: string | null | undefined;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: undefined,
-      email: undefined,
-      emailVerified: undefined,
-      isAnonymous: undefined,
-      tenantId: undefined,
-      providerInfo: []
-    },
-    operationType,
-    path
-  };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+function handleAppError(error: unknown) {
+  console.error("App Error:", error);
 }
 
 interface ErrorBoundaryProps {
@@ -147,7 +105,7 @@ const getLocalDateString = (date: Date) => {
 };
 
 // --- 类型定义 ---
-type Page = 'home' | 'recipes' | 'wiki' | 'ai' | 'profile' | 'meal-detail' | 'plan' | 'history' | 'care';
+type Page = 'home' | 'recipes' | 'wiki' | 'ai' | 'profile' | 'meal-detail' | 'plan' | 'history' | 'care' | 'baby-selection';
 type FamilyRole = '妈妈' | '爸爸' | '爷爷' | '奶奶' | '外公' | '外婆' | '月嫂' | '其他';
 type MealType = 'milk' | 'food';
 
@@ -266,13 +224,13 @@ export default function App() {
 }
 
 function AppContent() {
-  // --- 1. 状态管理 (全部移到顶部，确保后续函数闭包能正确访问) ---
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [uid, setUid] = useState<string | null>(null);
-  const [loginStep, setLoginStep] = useState<'login' | 'baby-setup' | 'role'>('login');
-  const [isAuthReady, setIsAuthReady] = useState(false);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+// --- 1. 状态管理 (全部移到顶部，确保后续函数闭包能正确访问) ---
+  const [email, setEmail] = useState<string | null>(localStorage.getItem('baby_food_email'));
+  const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem('baby_food_email'));
+  const [loginStep, setLoginStep] = useState<'login' | 'code' | 'baby-setup' | 'role'>('login');
+  const [loginEmail, setLoginEmail] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [isSendingCode, setIsSendingCode] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const isSavingRef = useRef(false);
   const [lastLocalChangeTime, setLastLocalChangeTime] = useState(0);
@@ -280,12 +238,16 @@ function AppContent() {
   const [isEditingBabyProfile, setIsEditingBabyProfile] = useState(false);
   const isEditingBabyProfileRef = useRef(false);
   const isFetchingRef = useRef(false);
-  const lastSyncVersionRef = useRef<number>(0);
 
   const [babyPhoto, setBabyPhoto] = useState<string | null>(null);
   const [babyName, setBabyName] = useState<string>('宝宝');
   const [babyBirthday, setBabyBirthday] = useState<string>('2025-08-07');
   const [userRole, setUserRole] = useState<FamilyRole | null>(null);
+  const [currentBabyId, setCurrentBabyId] = useState<string | null>(null);
+  const [userBabies, setUserBabies] = useState<any[]>([]);
+  const [babyInfo, setBabyInfo] = useState<any | null>(null);
+  const [isAddingMember, setIsAddingMember] = useState(false);
+  const [newMemberData, setNewMemberData] = useState({ username: '', role: '爸爸' as FamilyRole });
 
   const [activePage, setActivePage] = useState<Page>('home');
   const [selectedMealId, setSelectedMealId] = useState<string | null>(null);
@@ -360,274 +322,43 @@ function AppContent() {
   };
 
   // --- 3. 后端 API 调用 ---
-  const fetchBabyPhoto = async () => {
-    try {
-      const response = await fetch('/api/get-baby-photo');
-      const result = await response.json();
-      if (result.success && result.babyPhoto) {
-        setBabyPhoto(result.babyPhoto);
-      }
-    } catch (error) {
-      console.error("Failed to fetch baby photo:", error);
-    }
-  };
-
-  const fetchSharedData = async () => {
-    if (!uid || isFetchingRef.current) return;
-    
-    const now = Date.now();
-    const timeSinceLastChange = now - lastLocalChangeTimeRef.current;
-    
-    // 如果正在保存，或者正在编辑宝宝资料，或者最近 10 秒内有本地修改，跳过本次自动刷新
-    if (isSavingRef.current || isEditingBabyProfileRef.current || (timeSinceLastChange < 10000)) {
-      return;
-    }
-
-    isFetchingRef.current = true;
-    try {
-      // 1. 先检查版本，版本没变就不下载大数据
-      const versionRes = await fetch('/api/get-data-version');
-      const versionData = await versionRes.json();
-      
-      if (versionData.success && versionData.version <= lastSyncVersionRef.current) {
-        // console.log("数据版本未变，跳过下载");
-        return;
-      }
-
-      // 2. 版本变了，下载数据
-      const response = await fetch('/api/get-shared-data', {
-        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
-      });
-      const result = await response.json();
-      
-      // 再次检查，防止在请求期间发生了本地修改或进入编辑模式
-      const nowAfter = Date.now();
-      const timeSinceLastChangeAfter = nowAfter - lastLocalChangeTimeRef.current;
-      if (isSavingRef.current || isEditingBabyProfileRef.current || (timeSinceLastChangeAfter < 10000)) {
-        return;
-      }
-
-      if (result.success && result.data) {
-        const data = result.data;
-        setBabyName(data.babyName || '宝宝');
-        setBabyBirthday(data.babyBirthday || '2025-08-07');
-        
-        // 核心修复：合并食材列表，而不是简单覆盖
-        // 这样即使服务器返回的数据有问题，本地新加的食材也不会消失
-        if (data.ingredients && Array.isArray(data.ingredients)) {
-          setIngredients(prev => {
-            const merged = [...(prev || [])];
-            data.ingredients.forEach((newIng: Ingredient) => {
-              const exists = merged.find(i => i.id === newIng.id);
-              if (!exists) {
-                merged.push(newIng);
-              } else {
-                // 如果已存在，以服务器为准更新属性（除了 ID）
-                const index = merged.findIndex(i => i.id === newIng.id);
-                merged[index] = newIng;
-              }
-            });
-            return merged;
-          });
-        }
-        
-        setMeals(data.meals || []);
-        setVitamins(data.vitamins || []);
-        setWeightRecords(data.weightRecords || []);
-        setPoopRecords(data.poopRecords || []);
-        setSleepRecords(data.sleepRecords || []);
-        setSafeIngredients(data.safeIngredients || []);
-        setAllergicIngredients(data.allergicIngredients || []);
-        
-        // 更新本地版本号
-        lastSyncVersionRef.current = versionData.version;
-      }
-    } catch (error) {
-      console.error("Failed to fetch shared data:", error);
-    } finally {
-      isFetchingRef.current = false;
-    }
-  };
-
-  const fetchUserProfile = async (username: string) => {
-    try {
-      // 同样增加版本校验
-      const response = await fetch(`/api/get-profile?username=${username}`);
-      const result = await response.json();
-      if (result.success) {
-        const profile = result.profile;
-        setUserRole(profile.role || null);
-        if (profile.babyName) setBabyName(profile.babyName);
-        if (profile.babyBirthday) setBabyBirthday(profile.babyBirthday);
-        // 不再从这里更新 babyPhoto
-        return true;
-      } else {
-        // 如果没有资料，进入设置流程
-        setLoginStep('baby-setup');
-        return false;
-      }
-    } catch (error) {
-      console.error("Failed to fetch user profile:", error);
-      return false;
-    }
-  };
-
-  const checkProfile = async (username: string) => {
-    return await fetchUserProfile(username);
-  };
-
-  const saveSharedData = async (overrideData?: any) => {
-    updateIsSaving(true); // 开启锁定
-    try {
-      const dataToSave = overrideData || {
-        babyName,
-        babyBirthday,
-        babyPhoto,
-        meals,
-        vitamins,
-        weightRecords,
-        poopRecords,
-        sleepRecords,
-        safeIngredients,
-        allergicIngredients,
-        ingredients // 包含食材列表
-      };
-      const response = await fetch('/api/save-shared-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: dataToSave }),
-      });
-      const result = await response.json();
-      if (result.success) {
-        // 更新本地版本号，避免立即触发重新获取
-        if (result.version) {
-          lastSyncVersionRef.current = result.version;
-        }
-      } else {
-        console.error("Failed to save shared data:", result.message);
-      }
-    } catch (error) {
-      console.error("Error saving shared data:", error);
-    } finally {
-      // 延迟一小会儿解锁，确保服务器数据已落盘
-      setTimeout(() => updateIsSaving(false), 1000);
-    }
-  };
-
-  // 初始加载检查登录状态
-  useEffect(() => {
-    const savedUsername = localStorage.getItem('baby_food_username');
-    if (savedUsername) {
-      setUid(savedUsername);
-      setIsLoggedIn(true);
-      // 移除这里的 fetch 调用，统一交给下面的 useEffect 处理
-    }
-    setIsAuthReady(true);
-  }, []);
-
-  // --- 后端数据同步 (替代 Firestore) ---
-  useEffect(() => {
-    if (!isAuthReady || !uid) return;
-
-    // 初始加载：只在 uid 改变时执行一次
-    console.log("🚀 正在执行初始数据同步...");
-    fetchUserProfile(uid);
-    fetchSharedData();
-    fetchBabyPhoto(); // 独立加载头像
-
-    // 轮询同步 (简单实现实时效果)
-    const interval = setInterval(() => {
-      fetchSharedData();
-    }, 15000); // 进一步增加到 15 秒，确保低带宽下的稳定性
-
-    return () => clearInterval(interval);
-  }, [isAuthReady, uid]); 
-
-  // 监听数据变化并自动保存
-  useEffect(() => {
-    if (!isAuthReady || !isLoggedIn) return;
-    
-    // 如果最近 3 秒内没有本地修改，说明这是来自 fetchSharedData 的更新，不触发保存
-    const now = Date.now();
-    if (now - lastLocalChangeTime > 3000) return;
-
-    const timer = setTimeout(() => {
-      saveSharedData({
-        babyName,
-        babyBirthday,
-        babyPhoto,
-        meals,
-        vitamins,
-        weightRecords,
-        poopRecords,
-        sleepRecords,
-        safeIngredients,
-        allergicIngredients,
-        ingredients
-      });
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [babyName, babyBirthday, babyPhoto, meals, vitamins, weightRecords, safeIngredients, allergicIngredients, ingredients, isAuthReady, isLoggedIn]);
 
   const saveBabyProfile = async (data: { babyName: string, babyBirthday: string, role: FamilyRole, babyPhoto?: string | null }) => {
-    if (!uid) return;
-    updateLastLocalChange();
-    // 更新本地状态以触发自动保存
-    setBabyName(data.babyName);
-    setBabyBirthday(data.babyBirthday);
-    if (data.babyPhoto !== undefined) setBabyPhoto(data.babyPhoto);
-    setUserRole(data.role);
-    
+    if (!email) return;
     try {
-      const response = await fetch('/api/save-profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: uid, ...data }),
+      await saveUserData('profile', {
+        babyName: data.babyName,
+        babyBirthday: data.babyBirthday,
+        babyPhoto: data.babyPhoto || null,
+        role: data.role
       });
-      const result = await response.json();
-      if (result.success) {
-        setLoginStep('login');
-        updateIsEditingBabyProfile(false);
-        fetchUserProfile(uid);
-        fetchSharedData();
-      }
+      setLoginStep('login');
+      setIsLoggedIn(true);
+      updateIsEditingBabyProfile(false);
     } catch (error) {
       console.error("Failed to save profile:", error);
     }
   };
 
-  const handleLogin = async () => {
-    // 移除 Firebase 登录，改用后端登录
-    setLoginStep('login');
-  };
-
-  const handleLogout = async () => {
-    try {
-      localStorage.removeItem('baby_food_username');
-      setUid(null);
-      setIsLoggedIn(false);
-      setActivePage('home');
-    } catch (error) {
-      console.error("Logout failed:", error);
-    }
-  };
   const fileInputRef = useRef<HTMLInputElement>(null);
   const babyPhotoInputRef = useRef<HTMLInputElement>(null);
 
   // --- 动态计算宝宝信息 ---
   const addPoopRecord = () => {
+    if (!email) return;
     const newRecord: PoopRecord = {
       id: Date.now().toString(),
       date: todayStr,
       time: newPoopTime,
-      role: userRole || '妈妈'
+      role: userRole || '妈妈',
     };
-    setPoopRecords(prev => [...prev, newRecord]);
-    updateLastLocalChange();
+    setPoopRecords([newRecord, ...poopRecords]);
     setIsAddingPoop(false);
+    updateLastLocalChange();
   };
 
   const addSleepRecord = () => {
+    if (!email) return;
     const start = new Date(`2000-01-01T${newSleepData.startTime}`);
     const end = new Date(`2000-01-01T${newSleepData.endTime}`);
     let duration = (end.getTime() - start.getTime()) / (1000 * 60);
@@ -639,20 +370,20 @@ function AppContent() {
       startTime: newSleepData.startTime,
       endTime: newSleepData.endTime,
       durationMinutes: duration,
-      role: userRole || '妈妈'
+      role: userRole || '妈妈',
     };
-    setSleepRecords(prev => [...prev, newRecord]);
-    updateLastLocalChange();
+    setSleepRecords([newRecord, ...sleepRecords]);
     setIsAddingSleep(false);
+    updateLastLocalChange();
   };
 
   const deletePoopRecord = (id: string) => {
-    setPoopRecords(prev => prev.filter(r => r.id !== id));
+    setPoopRecords(poopRecords.filter(r => r.id !== id));
     updateLastLocalChange();
   };
 
   const deleteSleepRecord = (id: string) => {
-    setSleepRecords(prev => prev.filter(r => r.id !== id));
+    setSleepRecords(sleepRecords.filter(r => r.id !== id));
     updateLastLocalChange();
   };
 
@@ -682,12 +413,121 @@ function AppContent() {
     };
   };
 
-  const babyInfo = calculateBabyInfo();
+  const calculatedBabyInfo = calculateBabyInfo();
 
-  // --- 初始化数据 ---
+  // --- 3. 数据同步与持久化 ---
+  const fetchUserData = async () => {
+    if (!email) return;
+    try {
+      const response = await fetch(`/api/get-user-data?email=${encodeURIComponent(email)}`);
+      const result = await response.json();
+      if (result.success && result.data) {
+        const data = result.data;
+        setBabyName(data.profile?.babyName || '宝宝');
+        setBabyBirthday(data.profile?.babyBirthday || '2025-08-07');
+        setBabyPhoto(data.profile?.babyPhoto || null);
+        setUserRole(data.profile?.role || '妈妈');
+        setMeals(data.meals || []);
+        setVitamins(data.vitamins || []);
+        setWeightRecords(data.weightRecords || []);
+        setPoopRecords(data.poopRecords || []);
+        setSleepRecords(data.sleepRecords || []);
+        setSafeIngredients(data.safeIngredients || []);
+        setAllergicIngredients(data.allergicIngredients || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch user data:", error);
+    }
+  };
+
+  const saveUserData = async (type: string, data: any) => {
+    if (!email) return;
+    try {
+      await fetch('/api/save-user-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, type, data })
+      });
+    } catch (error) {
+      console.error(`Failed to save ${type}:`, error);
+    }
+  };
+
+  // 初始加载
   useEffect(() => {
-    // 移除客户端模拟数据生成，改由后端同步
-  }, []);
+    if (isLoggedIn && email) {
+      fetchUserData();
+    }
+  }, [isLoggedIn, email]);
+
+  // 自动保存逻辑 (防抖)
+  useEffect(() => {
+    if (!isLoggedIn || !email) return;
+    const timer = setTimeout(() => {
+      if (lastLocalChangeTime > 0) {
+        saveUserData('profile', { babyName, babyBirthday, babyPhoto, role: userRole });
+        saveUserData('meals', meals);
+        saveUserData('vitamins', vitamins);
+        saveUserData('weightRecords', weightRecords);
+        saveUserData('poopRecords', poopRecords);
+        saveUserData('sleepRecords', sleepRecords);
+        saveUserData('safeIngredients', safeIngredients);
+        saveUserData('allergicIngredients', allergicIngredients);
+      }
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [meals, vitamins, weightRecords, poopRecords, sleepRecords, safeIngredients, allergicIngredients, babyName, babyBirthday, babyPhoto, userRole, lastLocalChangeTime]);
+
+  const handleSendCode = async () => {
+    if (!loginEmail) return;
+    setIsSendingCode(true);
+    try {
+      const response = await fetch('/api/send-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginEmail })
+      });
+      const result = await response.json();
+      if (result.success) {
+        setLoginStep('code');
+      } else {
+        alert(result.message);
+      }
+    } catch (error) {
+      console.error("Failed to send code:", error);
+    } finally {
+      setIsSendingCode(false);
+    }
+  };
+
+  const handleLogin = async () => {
+    if (!loginEmail || !verificationCode) return;
+    try {
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginEmail, code: verificationCode })
+      });
+      const result = await response.json();
+      if (result.success) {
+        localStorage.setItem('baby_food_email', loginEmail);
+        setEmail(loginEmail);
+        setIsLoggedIn(true);
+      } else {
+        alert(result.message);
+      }
+    } catch (error) {
+      console.error("Login failed:", error);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('baby_food_email');
+    setEmail(null);
+    setIsLoggedIn(false);
+    setActivePage('home');
+    setLoginStep('login');
+  };
 
   // --- 业务逻辑 ---
   const toggleAllergy = (foodId: string) => {
@@ -695,7 +535,6 @@ function AppContent() {
       ? allergicIngredients.filter(id => id !== foodId) 
       : [...allergicIngredients, foodId];
     const newSafe = safeIngredients.filter(id => id !== foodId);
-    
     setAllergicIngredients(newAllergic);
     setSafeIngredients(newSafe);
     updateLastLocalChange();
@@ -706,7 +545,6 @@ function AppContent() {
       ? safeIngredients.filter(id => id !== foodId) 
       : [...safeIngredients, foodId];
     const newAllergic = allergicIngredients.filter(id => id !== foodId);
-
     setSafeIngredients(newSafe);
     setAllergicIngredients(newAllergic);
     updateLastLocalChange();
@@ -774,18 +612,13 @@ function AppContent() {
       setBabyPhoto(base64String);
       updateLastLocalChange();
       // 如果已经登录，立即保存到后端
-      if (uid) {
-        fetch('/api/save-profile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            username: uid, 
-            babyName, 
-            babyBirthday, 
-            role: userRole, 
-            babyPhoto: base64String 
-          }),
-        }).catch(err => console.error("Failed to save baby photo:", err));
+      if (email) {
+        saveUserData('profile', {
+          babyName,
+          babyBirthday,
+          role: userRole,
+          babyPhoto: base64String
+        });
       }
     };
     reader.readAsDataURL(file);
@@ -1254,7 +1087,7 @@ function AppContent() {
     const growthData = (weightRecords || []).map(r => {
       const recordDate = new Date(r.date);
       const birthDate = new Date(); // 假设当前月龄是基于当前日期回推的
-      birthDate.setMonth(birthDate.getMonth() - babyInfo.months);
+      birthDate.setMonth(birthDate.getMonth() - (calculatedBabyInfo.months || 0));
       const diffTime = Math.abs(recordDate.getTime() - birthDate.getTime());
       const diffMonths = Math.floor(diffTime / (1000 * 60 * 60 * 24 * 30.44));
       const standard = whoStandard.find(s => s.month === diffMonths)?.weight;
@@ -1441,9 +1274,9 @@ function AppContent() {
               </div>
               <input type="file" accept="image/*" className="hidden" ref={babyPhotoInputRef} onChange={handleBabyPhotoUpload} />
               <div className="flex-1">
-                <h2 className="text-2xl font-black text-gray-800 tracking-tight">{babyInfo.name}宝贝</h2>
+                <h2 className="text-2xl font-black text-gray-800 tracking-tight">{calculatedBabyInfo.name}宝贝</h2>
                 <div className="flex items-center gap-3 mt-1">
-                  <p className="text-orange-500 font-bold text-sm">{babyInfo.age} · {babyInfo.stage}</p>
+                  <p className="text-orange-500 font-bold text-sm">{calculatedBabyInfo.age} · {calculatedBabyInfo.stage}</p>
                   <div className="flex items-center gap-1 bg-orange-50 px-2 py-0.5 rounded-lg border border-orange-100 cursor-pointer hover:bg-orange-100 transition-colors" onClick={() => setIsAddingWeight(true)}>
                     <Scale className="w-3 h-3 text-orange-500" />
                     <span className="text-[10px] font-black text-orange-600">
@@ -2294,6 +2127,184 @@ function AppContent() {
             </div>
           </motion.div>
         );
+      case 'profile':
+        return (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-5 space-y-6 pb-24">
+            <div className="flex items-center justify-between">
+              <h2 className="text-3xl font-black text-gray-800 tracking-tight">个人中心</h2>
+              <button 
+                onClick={handleLogout} 
+                className="text-red-500 font-black text-sm flex items-center gap-1 bg-red-50 px-3 py-2 rounded-xl border border-red-100 active:scale-95 transition-transform"
+              >
+                <LogOut className="w-4 h-4" /> 退出登录
+              </button>
+            </div>
+
+            {/* 用户信息 */}
+            <div className="duo-card p-6 bg-white flex items-center gap-5">
+              <div className="w-20 h-20 rounded-[24px] bg-orange-100 flex items-center justify-center text-3xl border-2 border-orange-200 shadow-inner">
+                {userRole?.[0] || '👤'}
+              </div>
+              <div>
+                <h3 className="text-xl font-black text-gray-800">{email}</h3>
+                <p className="text-sm font-bold text-gray-400">当前角色: <span className="text-orange-500">{userRole}</span></p>
+              </div>
+            </div>
+
+            {/* 宝宝信息 */}
+            <div className="duo-card p-6 bg-white space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-sm font-black text-gray-700 uppercase tracking-widest">当前宝宝</h3>
+                <button 
+                  onClick={() => setActivePage('baby-selection')} 
+                  className="text-orange-500 text-xs font-black hover:underline"
+                >
+                  切换宝宝
+                </button>
+              </div>
+              <div className="flex items-center gap-4 p-4 bg-orange-50 rounded-2xl border border-orange-100">
+                <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-white shadow-sm">
+                  {babyPhoto ? (
+                    <img src={babyPhoto} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="w-full h-full bg-orange-100 flex items-center justify-center text-2xl">👶</div>
+                  )}
+                </div>
+                <div>
+                  <p className="font-black text-gray-800 text-lg">{babyName}</p>
+                  <p className="text-xs font-bold text-gray-400">生日: {babyBirthday}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 成员管理 (仅主账号可见) */}
+            {babyInfo?.owner === email && (
+              <div className="duo-card p-6 bg-white space-y-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-sm font-black text-gray-700 uppercase tracking-widest">家庭成员 (子账号)</h3>
+                  <button 
+                    onClick={() => setIsAddingMember(true)} 
+                    className="w-10 h-10 bg-orange-500 text-white rounded-xl flex items-center justify-center shadow-lg active:scale-90 transition-transform"
+                  >
+                    <Plus className="w-6 h-6" />
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {babyInfo?.members?.map((m: any) => (
+                    <div key={m.username} className="flex items-center justify-between bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-sm font-black text-gray-400 border border-gray-100 shadow-sm">
+                          {m.role[0]}
+                        </div>
+                        <div>
+                          <p className="text-sm font-black text-gray-700">{m.username}</p>
+                          <p className="text-[10px] font-bold text-gray-400">{m.role}</p>
+                        </div>
+                      </div>
+                      {m.username === babyInfo?.owner && (
+                        <span className="text-[10px] font-black bg-orange-100 text-orange-600 px-3 py-1 rounded-full border border-orange-200">
+                          主账号
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 添加成员弹窗 */}
+            {isAddingMember && (
+              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-5">
+                <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-md rounded-[32px] p-8 space-y-6 shadow-2xl">
+                  <h3 className="text-2xl font-black text-gray-800">添加家庭成员</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">成员用户名</label>
+                      <input 
+                        type="text" 
+                        value={newMemberData.username}
+                        onChange={(e) => setNewMemberData({ ...newMemberData, username: e.target.value })}
+                        placeholder="输入用户名"
+                        className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl px-5 py-4 font-black focus:outline-none focus:border-orange-500 transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">成员角色</label>
+                      <div className="grid grid-cols-4 gap-2">
+                        {['妈妈', '爸爸', '爷爷', '奶奶', '外公', '外婆', '月嫂', '其他'].map(r => (
+                          <button 
+                            key={r}
+                            onClick={() => setNewMemberData({ ...newMemberData, role: r as FamilyRole })}
+                            className={`py-2 rounded-xl text-xs font-black transition-all ${newMemberData.role === r ? 'duo-btn-orange' : 'duo-btn-gray text-gray-400'}`}
+                          >
+                            {r}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 pt-4">
+                    <button onClick={() => setIsAddingMember(false)} className="flex-1 py-4 duo-btn-gray text-gray-500">取消</button>
+                    <button onClick={handleAddMember} className="flex-1 py-4 duo-btn-orange">确认添加</button>
+                  </div>
+                </motion.div>
+              </div>
+            )}
+          </motion.div>
+        );
+      case 'baby-selection':
+        return (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-5 space-y-6 pb-24">
+            <div className="flex items-center justify-between">
+              <h2 className="text-3xl font-black text-gray-800 tracking-tight">选择宝宝</h2>
+              <button onClick={() => setActivePage('profile')} className="text-gray-400 font-black text-sm flex items-center gap-1 bg-gray-50 px-3 py-2 rounded-xl border border-gray-100">
+                返回
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-4">
+              {userBabies.map(baby => (
+                <button 
+                  key={baby.id}
+                  onClick={() => {
+                    setCurrentBabyId(baby.id);
+                    setActivePage('home');
+                  }}
+                  className={`duo-card p-5 flex items-center gap-5 bg-white text-left transition-all hover:scale-[1.02] active:scale-98 relative overflow-hidden ${currentBabyId === baby.id ? 'border-orange-500 ring-2 ring-orange-500 ring-offset-2' : ''}`}
+                >
+                  {currentBabyId === baby.id && (
+                    <div className="absolute top-0 right-0 bg-orange-500 text-white px-3 py-1 rounded-bl-xl text-[10px] font-black uppercase tracking-widest">
+                      当前选择
+                    </div>
+                  )}
+                  <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-gray-100 shadow-sm">
+                    {baby.photo ? (
+                      <img src={baby.photo} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="w-full h-full bg-orange-50 flex items-center justify-center text-3xl">👶</div>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-black text-xl text-gray-800">{baby.name}</p>
+                    <p className="text-xs font-bold text-gray-400">生日: {baby.birthday}</p>
+                    <p className="text-[10px] font-black text-orange-500 mt-1 uppercase tracking-widest">
+                      {baby.owner === email ? '主账号' : '成员账号'}
+                    </p>
+                  </div>
+                  <ChevronRight className={`w-6 h-6 transition-colors ${currentBabyId === baby.id ? 'text-orange-500' : 'text-gray-200'}`} />
+                </button>
+              ))}
+              <button 
+                onClick={() => setLoginStep('baby-setup')}
+                className="duo-card p-8 flex flex-col items-center justify-center gap-3 bg-gray-50 border-4 border-dashed border-gray-200 text-gray-400 hover:bg-gray-100 hover:border-orange-200 hover:text-orange-500 transition-all group"
+              >
+                <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                  <Plus className="w-8 h-8" />
+                </div>
+                <span className="font-black text-lg">新增宝宝</span>
+              </button>
+            </div>
+          </motion.div>
+        );
       case 'history':
         return renderHistoryPage();
       case 'recipes':
@@ -2339,94 +2350,80 @@ function AppContent() {
             <div className="w-20 h-20 bg-orange-100 rounded-3xl flex items-center justify-center mb-6 border-4 border-orange-50">
               <Baby className="w-10 h-10 text-orange-500" />
             </div>
-            <h1 className="text-4xl font-black text-gray-800 mb-3">欢迎来到{babyName === '宝宝' ? '宝宝' : babyName}的家</h1>
-            <p className="text-gray-400 font-bold">请输入用户名和密码以开始记录宝宝的成长</p>
+            <h1 className="text-4xl font-black text-gray-800 mb-3">欢迎来到宝宝辅食助手</h1>
+            <p className="text-gray-400 font-bold">请输入您的邮箱以开始记录宝宝的成长</p>
           </div>
 
           <div className="space-y-6">
             <div className="space-y-3">
-              <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">用户名</label>
+              <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">电子邮箱</label>
               <div className="relative">
-                <User className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-300" />
+                <Mail className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-300" />
                 <input 
-                  type="text" 
-                  placeholder="请输入用户名"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="w-full pl-14 pr-5 py-5 bg-gray-50 rounded-[24px] border-2 border-gray-100 font-black text-lg focus:outline-none focus:border-orange-500 transition-colors"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">密码</label>
-              <div className="relative">
-                <ShieldCheck className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-300" />
-                <input 
-                  type="password" 
-                  placeholder="请输入密码"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  type="email" 
+                  placeholder="example@gmail.com"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
                   className="w-full pl-14 pr-5 py-5 bg-gray-50 rounded-[24px] border-2 border-gray-100 font-black text-lg focus:outline-none focus:border-orange-500 transition-colors"
                 />
               </div>
             </div>
 
             <button 
-              onClick={async () => {
-                if (username && password) {
-                  // 立即重置状态，防止旧身份干扰
-                  setIsLoggedIn(false);
-                  setUserRole(null);
-                  setUid(null);
-                  
-                  try {
-                    const response = await fetch('/api/login', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ username, password })
-                    });
-                    const data = await response.json();
-                    if (data.success) {
-                      localStorage.setItem('baby_food_username', username);
-                      setUid(username);
-                      // 如果返回了角色，说明是预设用户且已初始化，直接进入
-                      if (data.role) {
-                        setUserRole(data.role);
-                        await fetchUserProfile(username);
-                        await fetchSharedData();
-                        await fetchBabyPhoto();
-                        setIsLoggedIn(true);
-                      } else {
-                        const hasProfile = await fetchUserProfile(username);
-                        if (!hasProfile) {
-                          setLoginStep('baby-setup');
-                        } else {
-                          await fetchSharedData();
-                          await fetchBabyPhoto();
-                          setIsLoggedIn(true);
-                        }
-                      }
-                    } else {
-                      alert(data.message || '登录失败');
-                    }
-                  } catch (error) {
-                    console.error("登录失败:", error);
-                    alert(`服务器连接失败: ${error instanceof Error ? error.message : '未知错误'}`);
-                  }
-                } else {
-                  alert('请输入用户名和密码');
-                }
-              }}
-              className="w-full py-5 duo-btn-orange text-lg mt-4"
+              onClick={handleSendCode}
+              disabled={isSendingCode || !loginEmail}
+              className="w-full duo-btn-orange py-5 text-xl font-black disabled:opacity-50"
             >
-              登录 / 注册
+              {isSendingCode ? '发送中...' : '发送验证码'}
             </button>
           </div>
+        </motion.div>
+      );
+    }
 
-          <p className="mt-auto mb-10 text-center text-[10px] font-bold text-gray-300 px-10">
-            登录即代表您同意 <span className="text-gray-400 underline">用户协议</span> 和 <span className="text-gray-400 underline">隐私政策</span>
-          </p>
+    if (loginStep === 'code') {
+      return (
+        <motion.div 
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="h-full flex flex-col px-8 pt-20"
+        >
+          <div className="mb-12">
+            <h1 className="text-4xl font-black text-gray-800 mb-3">输入验证码</h1>
+            <p className="text-gray-400 font-bold">验证码已发送至 {loginEmail}</p>
+          </div>
+
+          <div className="space-y-6">
+            <div className="space-y-3">
+              <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">6位验证码</label>
+              <div className="relative">
+                <ShieldCheck className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-300" />
+                <input 
+                  type="text" 
+                  maxLength={6}
+                  placeholder="123456"
+                  value={verificationCode}
+                  onChange={(e) => setVerificationCode(e.target.value)}
+                  className="w-full pl-14 pr-5 py-5 bg-gray-50 rounded-[24px] border-2 border-gray-100 font-black text-lg focus:outline-none focus:border-orange-500 transition-colors text-center tracking-[0.5em]"
+                />
+              </div>
+            </div>
+
+            <button 
+              onClick={handleLogin}
+              disabled={verificationCode.length !== 6}
+              className="w-full duo-btn-orange py-5 text-xl font-black disabled:opacity-50"
+            >
+              立即登录
+            </button>
+            
+            <button 
+              onClick={() => setLoginStep('login')}
+              className="w-full py-3 text-gray-400 font-bold text-sm"
+            >
+              返回修改邮箱
+            </button>
+          </div>
         </motion.div>
       );
     }
@@ -2444,7 +2441,7 @@ function AppContent() {
           </div>
 
           <div className="space-y-8">
-            {/* 头像上传 */}
+            {/* 宝宝头像 */}
             <div className="flex flex-col items-center gap-4">
               <div 
                 onClick={() => babyPhotoInputRef.current?.click()}
@@ -2731,7 +2728,7 @@ function AppContent() {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
-                          username: uid, 
+                          username: email, 
                           babyName, 
                           babyBirthday, 
                           role: userRole,
@@ -2739,12 +2736,11 @@ function AppContent() {
                         })
                       });
                       const data = await response.json();
-                      if (data.success) {
-                        updateIsEditingBabyProfile(false);
-                        updateIsSaving(false); // 先解锁
-                        // 保存成功后立即刷新一次数据，确保同步
-                        await fetchSharedData();
-                      } else {
+                        if (data.success) {
+                          updateIsEditingBabyProfile(false);
+                          updateIsSaving(false);
+                          if (currentBabyId) await fetchBabyData(currentBabyId);
+                        } else {
                         alert(data.message || "保存失败");
                       }
                     } catch (error) {

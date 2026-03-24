@@ -1,299 +1,177 @@
 import express from 'express';
 import cors from 'cors';
-import compression from 'compression'; // 导入压缩模块
+import compression from 'compression';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-// import { createServer as createViteServer } from 'vite'; // 移除静态导入，改用动态导入
+import nodemailer from 'nodemailer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DB_FILE = path.join(__dirname, "db.json");
 
-const PRESET_USERS: Record<string, { password: string, role: string }> = {
-  "mama": { password: "123456", role: "妈妈" },
-  "baba": { password: "123456", role: "爸爸" },
-  "nainai": { password: "123456", role: "奶奶" },
-  "yeye": { password: "123456", role: "爷爷" },
-  "waipo": { password: "123456", role: "外婆" },
-  "waigong": { password: "123456", role: "外公" },
-  "yuesao": { password: "123456", role: "月嫂" }
-};
+// 邮箱正则校验
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+// 临时存储验证码 (生产环境建议用 Redis)
+const verificationCodes: Record<string, { code: string, expires: number }> = {};
+
+// Nodemailer 配置 (请根据实际情况修改 SMTP)
+const transporter = nodemailer.createTransport({
+  service: 'qq', // 或者 'gmail', '163' 等
+  auth: {
+    user: process.env.EMAIL_USER || 'your-email@qq.com',
+    pass: process.env.EMAIL_PASS || 'your-app-password'
+  }
+});
 
 async function startServer() {
   const app = express();
-  app.use(compression()); // 开启全站 Gzip 压缩，大幅提升加载速度
-  // 基础中间件
+  app.use(compression());
   app.use(express.json({ limit: '50mb' }));
   app.use(cors());
 
-  // 极简安全头，仅保留必要的
-  app.use((req, res, next) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    next();
-  });
-
-  // 健康检查接口
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
-  });
-
   // 初始化数据库文件
   if (!fs.existsSync(DB_FILE)) {
-    const initialDB = { 
-      users: { ...PRESET_USERS }, 
-      profiles: {}, 
-      sharedData: {
-        babyName: "宝宝",
-        babyBirthday: "2025-08-07",
-        babyPhoto: null,
-        meals: [
-          { id: 'm1', date: '2026-03-19', time: "07:00", type: 'milk', milkType: 'breast', milkVolume: 180, foods: [], isCompleted: true, photos: [], comments: [], generatedBy: '妈妈', completedBy: '妈妈' },
-          { id: 'm2', date: '2026-03-19', time: "12:00", type: 'food', foods: [{ foodId: '1', quantity: 2 }], isCompleted: false, photos: [], comments: [], generatedBy: '妈妈' },
-          { id: 'm3', date: '2026-03-19', time: "18:00", type: 'food', foods: [{ foodId: '2', quantity: 1 }], isCompleted: false, photos: [], comments: [], generatedBy: '妈妈' }
-        ],
-        vitamins: [
-          { id: 'v1', date: '2026-03-19', type: 'D', isCompleted: true, completedBy: '妈妈' },
-          { id: 'v2', date: '2026-03-19', type: 'AD', isCompleted: false }
-        ],
-        weightRecords: [
-          { id: 'w1', date: '2026-03-01', weight: 8.2 },
-          { id: 'w2', date: '2026-03-04', weight: 8.35 },
-          { id: 'w3', date: '2026-03-07', weight: 8.5 },
-        ],
-        safeIngredients: ['1', '13', '2', '16', '6', '33', '11', '17', '3', '31', '32', '18', '7', '5', '10'],
-        allergicIngredients: [],
-        poopRecords: [],
-        sleepRecords: []
-      } 
-    };
+    const initialDB = { users: {} };
     fs.writeFileSync(DB_FILE, JSON.stringify(initialDB, null, 2));
   }
 
-  // 内存缓存
   let memoryDB: any = null;
 
   function readDB() {
     if (memoryDB) return memoryDB;
-    try { 
+    try {
       const dataStr = fs.readFileSync(DB_FILE, "utf-8");
-      memoryDB = JSON.parse(dataStr || "{}");
-      
-      // 确保预设用户始终存在
-      let changed = false;
-      if (!memoryDB.users) { memoryDB.users = {}; changed = true; }
-      for (const [uname, udata] of Object.entries(PRESET_USERS)) {
-        if (!memoryDB.users[uname]) {
-          memoryDB.users[uname] = udata;
-          changed = true;
-        }
-      }
-      if (!memoryDB.sharedData) {
-        memoryDB.sharedData = {
-          babyName: "宝宝",
-          babyBirthday: "2025-08-07",
-          babyPhoto: null,
-          meals: [],
-          vitamins: [],
-          weightRecords: [],
-          safeIngredients: [],
-          allergicIngredients: [],
-          ingredients: []
-        };
-        changed = true;
-      } else if (!memoryDB.sharedData.ingredients) {
-        // 确保旧数据也能增加 ingredients 字段
-        memoryDB.sharedData.ingredients = [];
-        changed = true;
-      }
-      if (changed) {
-        writeDB(memoryDB);
-      }
+      memoryDB = JSON.parse(dataStr || '{"users":{}}');
+      if (!memoryDB.users) memoryDB.users = {};
       return memoryDB;
-    } 
-    catch (e) { 
-      console.error("Read DB Error:", e);
-      return { users: { ...PRESET_USERS }, profiles: {}, sharedData: {} }; 
+    } catch (e) {
+      return { users: {} };
     }
   }
+
   function writeDB(data: any) {
     memoryDB = data;
-    // 异步写入文件，不阻塞主线程
     fs.writeFile(DB_FILE, JSON.stringify(data, null, 2), (err) => {
       if (err) console.error("Write DB Error:", err);
     });
   }
 
-  // --- 模拟后端 API 路由 ---
+  // --- API 路由 ---
 
-  // 1. 登录/注册接口 (用户名+密码)
-  app.post('/api/login', (req, res) => {
-      const { username, password } = req.body;
-      if (!username || !password) {
-        return res.status(400).json({ success: false, message: "用户名和密码不能为空" });
-      }
-
-      const db = readDB();
-      
-      // 如果用户不存在且不是预设用户，则自动注册
-      if (!db.users[username]) {
-        db.users[username] = { password };
-        writeDB(db);
-        return res.json({ success: true, message: "注册并登录成功", isNewUser: true, role: null });
-      }
-
-      // 验证密码
-      if (db.users[username].password === password) {
-        const role = db.users[username].role || null;
-        res.json({ success: true, message: "登录成功", isNewUser: false, role });
-      } else {
-        res.status(401).json({ success: false, message: "密码错误" });
-      }
-  });
-
-  // 2. 保存用户资料 (针对个人或共享)
-  app.post("/api/save-profile", (req, res) => {
-      const { username, babyName, babyBirthday, role, babyPhoto } = req.body;
-      if (!username) return res.status(400).json({ success: false, message: "用户名不能为空" });
-
-      const db = readDB();
-      
-      // 统一更新共享数据中的宝宝信息，因为这是一个共享应用
-      if (babyName) db.sharedData.babyName = babyName;
-      if (babyBirthday) db.sharedData.babyBirthday = babyBirthday;
-      if (babyPhoto !== undefined) db.sharedData.babyPhoto = babyPhoto;
-
-      // 更新用户特定的资料
-      if (db.users[username]) {
-        db.users[username].role = role;
-      }
-      
-      db.profiles[username] = { 
-        babyName, 
-        babyBirthday, 
-        role, 
-        babyPhoto, 
-        updatedAt: new Date().toISOString() 
-      };
-      
-      writeDB(db);
-      res.json({ success: true, message: "资料保存成功" });
-  });
-
-  // 3. 获取用户资料 (不包含大图)
-  app.get("/api/get-profile", (req, res) => {
-      const { username } = req.query;
-      if (!username) return res.status(400).json({ success: false, message: "用户名不能为空" });
-
-      const db = readDB();
-      
-      if (PRESET_USERS[username as string]) {
-        res.json({ 
-          success: true, 
-          profile: {
-            babyName: db.sharedData.babyName,
-            babyBirthday: db.sharedData.babyBirthday,
-            // babyPhoto: db.sharedData.babyPhoto, // 移除大图
-            role: db.users[username as string].role
-          }
-        });
-      } else {
-        const profile = db.profiles[username as string];
-        if (profile) {
-            const { babyPhoto, ...restProfile } = profile;
-            res.json({ success: true, profile: restProfile });
-        } else {
-            res.json({ success: false, message: "未找到用户资料" });
-        }
-      }
-  });
-
-  // 4. 获取共享数据版本 (极小，用于轮询)
-  app.get("/api/get-data-version", (req, res) => {
-    console.log("[API] GET /api/get-data-version");
-    const db = readDB();
-    res.json({ success: true, version: db.sharedData.lastUpdated || 0 });
-  });
-
-  // 5. 获取共享数据 (不包含大图)
-  app.get("/api/get-shared-data", (req, res) => {
-    console.log("[API] GET /api/get-shared-data");
-    const db = readDB();
-    const { babyPhoto, ...restData } = db.sharedData;
-    
-    // 增加缓存控制，配合版本校验使用
-    res.setHeader('Cache-Control', 'public, max-age=5'); 
-    res.json({ success: true, data: restData });
-  });
-
-  // 6. 专门获取宝宝头像的接口
-  app.get("/api/get-baby-photo", (req, res) => {
-    const db = readDB();
-    if (db.sharedData.babyPhoto) {
-      // 头像增加强缓存，只有版本变了才重新加载
-      res.setHeader('Cache-Control', 'public, max-age=3600');
+  // 1. 发送验证码
+  app.post('/api/send-code', async (req, res) => {
+    const { email } = req.body;
+    if (!email || !EMAIL_REGEX.test(email)) {
+      return res.status(400).json({ success: false, message: "请输入有效的邮箱地址" });
     }
-    res.json({ success: true, babyPhoto: db.sharedData.babyPhoto });
-  });
 
-  // 7. 保存共享数据
-  app.post("/api/save-shared-data", (req, res) => {
-    const { data } = req.body;
-    if (!data) return res.status(400).json({ success: false, message: "数据不能为空" });
-
-    const db = readDB();
-    const newVersion = Date.now();
-    
-    // 记录保存的数据摘要，方便调试
-    console.log(`[Sync] Saving data. Version: ${newVersion}, Meals: ${data.meals?.length}, Ingredients: ${data.ingredients?.length}`);
-    
-    db.sharedData = { 
-      ...db.sharedData, 
-      ...data,
-      lastUpdated: newVersion 
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    verificationCodes[email] = {
+      code,
+      expires: Date.now() + 10 * 60 * 1000 // 10分钟有效
     };
-    writeDB(db);
-    res.json({ success: true, version: newVersion, message: "共享数据保存成功" });
+
+    try {
+      // 如果没有配置环境变量，这里仅打印验证码（方便开发调试）
+      if (!process.env.EMAIL_USER) {
+        console.log(`[DEV] Verification code for ${email}: ${code}`);
+        return res.json({ success: true, message: "验证码已发送 (开发模式: 见控制台)" });
+      }
+
+      await transporter.sendMail({
+        from: `"宝宝辅食助手" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: "您的登录验证码",
+        text: `您的验证码是：${code}，有效期10分钟。`
+      });
+      res.json({ success: true, message: "验证码已发送" });
+    } catch (error) {
+      console.error("Send Email Error:", error);
+      res.status(500).json({ success: false, message: "发送失败，请稍后再试" });
+    }
   });
 
-  // --- Vite 中间件配置 (开发环境) ---
-  if (process.env.NODE_ENV !== "production") {
-    console.log("🚀 正在启动 Vite 开发服务器中间件...");
-    try {
-      const { createServer: createViteServer } = await import('vite');
-      const vite = await createViteServer({
-        server: { middlewareMode: true },
-        appType: "spa",
-      });
-      app.use(vite.middlewares);
-      console.log("✅ Vite 中间件已挂载");
-    } catch (e) {
-      console.error("❌ Vite 启动失败:", e);
+  // 2. 登录接口 (验证码登录)
+  app.post('/api/login', (req, res) => {
+    const { email, code } = req.body;
+    const record = verificationCodes[email];
+
+    if (!record || record.code !== code || record.expires < Date.now()) {
+      return res.status(401).json({ success: false, message: "验证码错误或已过期" });
     }
+
+    delete verificationCodes[email];
+    const db = readDB();
+    
+    // 如果是新用户，初始化空间
+    if (!db.users[email]) {
+      db.users[email] = {
+        profile: { babyName: "宝宝", babyBirthday: "2025-08-07" },
+        meals: [],
+        vitamins: [],
+        weightRecords: [],
+        poopRecords: [],
+        sleepRecords: [],
+        safeIngredients: [],
+        allergicIngredients: []
+      };
+      writeDB(db);
+    }
+
+    res.json({ success: true, message: "登录成功", email });
+  });
+
+  // 3. 获取用户数据 (SaaS 隔离)
+  app.get('/api/get-user-data', (req, res) => {
+    const { email } = req.query;
+    if (!email || typeof email !== 'string') return res.status(400).json({ success: false, message: "未识别身份" });
+
+    const db = readDB();
+    const userData = db.users[email];
+
+    if (!userData) {
+      return res.status(404).json({ success: false, message: "用户不存在" });
+    }
+
+    res.json({ success: true, data: userData });
+  });
+
+  // 4. 保存用户数据 (SaaS 隔离)
+  app.post('/api/save-user-data', (req, res) => {
+    const { email, type, data } = req.body;
+    if (!email || !type) return res.status(400).json({ success: false, message: "参数不全" });
+
+    const db = readDB();
+    if (!db.users[email]) return res.status(404).json({ success: false, message: "用户不存在" });
+
+    // 动态更新对应字段
+    db.users[email][type] = data;
+    writeDB(db);
+
+    res.json({ success: true, message: "保存成功" });
+  });
+
+  // --- Vite 中间件配置 ---
+  if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import('vite');
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
   } else {
-    // 生产环境静态资源服务
     const distPath = path.join(__dirname, "dist");
     if (fs.existsSync(distPath)) {
-      // 对静态资源设置 1 年的强缓存，第二次打开秒开
-      app.use(express.static(distPath, {
-        maxAge: '1y',
-        immutable: true
-      }));
-      app.get("*", (req, res) => {
-        res.sendFile(path.join(distPath, "index.html"));
-      });
-      console.log("📦 已进入生产模式：Gzip 压缩与强缓存已开启");
-    } else {
-      console.error("❌ 错误：未找到 dist 目录。请先运行 'npm run build'");
-      app.get("*", (req, res) => {
-        res.status(500).send("服务器未构建，请联系管理员运行 npm run build");
-      });
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => res.sendFile(path.join(distPath, "index.html")));
     }
   }
 
   const PORT = process.env.PORT || 3000;
   app.listen(Number(PORT), '0.0.0.0', () => {
-      console.log(`✅ 服务器已启动，监听端口 ${PORT}...`);
+    console.log(`✅ SaaS 服务器已启动，监听端口 ${PORT}...`);
   });
 }
 
