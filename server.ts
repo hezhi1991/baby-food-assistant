@@ -5,6 +5,10 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import nodemailer from 'nodemailer';
+import dotenv from 'dotenv';
+
+// 强制加载 .env 配置文件
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,12 +20,14 @@ const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 // 临时存储验证码 (生产环境建议用 Redis)
 const verificationCodes: Record<string, { code: string, expires: number }> = {};
 
-// Nodemailer 配置 (请根据实际情况修改 SMTP)
+// Nodemailer 配置 (使用网易 Yeah 邮箱专业配置)
 const transporter = nodemailer.createTransport({
-  service: 'qq', // 或者 'gmail', '163' 等
+  host: 'smtp.yeah.net',
+  port: 465,
+  secure: true,
   auth: {
-    user: process.env.EMAIL_USER || 'your-email@qq.com',
-    pass: process.env.EMAIL_PASS || 'your-app-password'
+    user: process.env.EMAIL_USER, // 从 .env 读取
+    pass: process.env.EMAIL_PASS  // 从 .env 读取
   }
 });
 
@@ -83,8 +89,8 @@ async function startServer() {
       await transporter.sendMail({
         from: `"宝宝辅食助手" <${process.env.EMAIL_USER}>`,
         to: email,
-        subject: "您的登录验证码",
-        text: `您的验证码是：${code}，有效期10分钟。`
+        subject: "【宝宝辅食助手】登录验证码",
+        text: `亲爱的宝爸宝妈您好：\n\n您的专属登录验证码是：【 ${code} 】。\n请在10分钟内输入。`
       });
       res.json({ success: true, message: "验证码已发送" });
     } catch (error) {
