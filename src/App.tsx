@@ -484,8 +484,8 @@ function AppContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ownerEmail: targetEmail, // 主账号
-          memberEmail: newMemberData.email, // 要关联的子账号
+          email: targetEmail, // 改回使用 'email' 关键字，兼容后端要求
+          memberEmail: newMemberData.email, // 成员的登录邮箱
           username: newMemberData.username,
           role: newMemberData.role
         })
