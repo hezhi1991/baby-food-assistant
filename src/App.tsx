@@ -31,7 +31,8 @@ import {
   ShieldCheck,
   LogOut,
   Moon,
-  Heart
+  Heart,
+  Database
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -103,6 +104,8 @@ const getLocalDateString = (date: Date) => {
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
+
+const API_BASE_URL = 'http://47.79.19.177:3000';
 
 // --- 类型定义 ---
 type Page = 'home' | 'recipes' | 'wiki' | 'ai' | 'profile' | 'meal-detail' | 'plan' | 'history' | 'care' | 'baby-selection';
@@ -226,8 +229,10 @@ export default function App() {
 
 function AppContent() {
 // --- 1. 状态管理 (全部移到顶部，确保后续函数闭包能正确访问) ---
-  const [email, setEmail] = useState<string | null>(localStorage.getItem('baby_food_email'));
-  const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem('baby_food_email'));
+  const [user, setUser] = useState<any>(null);
+  const [email, setEmail] = useState<string | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [loginStep, setLoginStep] = useState<LoginStep>('login');
   const [loginEmail, setLoginEmail] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
@@ -236,6 +241,25 @@ function AppContent() {
   const isSavingRef = useRef(false);
   const [lastLocalChangeTime, setLastLocalChangeTime] = useState(0);
   const lastLocalChangeTimeRef = useRef(0);
+
+  // --- 辅助工具：重置所有业务数据状态 ---
+  const resetAllData = () => {
+    setBabyName('宝宝');
+    setBabyBirthday('2025-08-07');
+    setBabyPhoto(null);
+    setUserRole(null);
+    setMeals([]);
+    setVitamins([]);
+    setWeightRecords([]);
+    setPoopRecords([]);
+    setSleepRecords([]);
+    setMembers([]);
+    setIngredients(INITIAL_INGREDIENTS);
+    setSafeIngredients([]);
+    setAllergicIngredients([]);
+    setLastLocalChangeTime(0);
+    lastLocalChangeTimeRef.current = 0;
+  };
   const [isEditingBabyProfile, setIsEditingBabyProfile] = useState(false);
   const isEditingBabyProfileRef = useRef(false);
   const isFetchingRef = useRef(false);
@@ -249,6 +273,8 @@ function AppContent() {
   const [babyInfo, setBabyInfo] = useState<any | null>(null);
   const [members, setMembers] = useState<any[]>([]);
   const [isAddingMember, setIsAddingMember] = useState(false);
+  const [isMigratingData, setIsMigratingData] = useState(false);
+  const [migrationJson, setMigrationJson] = useState('');
   const [newMemberData, setNewMemberData] = useState({ username: '', role: '爸爸' as FamilyRole });
 
   const [activePage, setActivePage] = useState<Page>('home');
@@ -325,22 +351,115 @@ function AppContent() {
 
   // --- 3. 后端 API 调用 ---
 
+  const handleSendCode = async () => {
+    if (!loginEmail) return;
+    setIsSendingCode(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/send-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginEmail })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setLoginStep('code');
+      } else {
+        alert(data.message || '发送失败');
+      }
+    } catch (error) {
+      console.error("Send code failed:", error);
+      alert('网络错误，请稍后重试');
+    } finally {
+      setIsSendingCode(false);
+    }
+  };
+
+  const handleLogin = async () => {
+    if (!loginEmail || !verificationCode) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginEmail, code: verificationCode })
+      });
+      const data = await response.json();
+      if (data.success) {
+        localStorage.setItem('baby_food_email', loginEmail);
+        setUser({ uid: loginEmail, email: loginEmail });
+        setEmail(loginEmail);
+        setIsLoggedIn(true);
+        // 如果是新用户，可能需要设置宝宝资料
+        if (data.isNewUser) {
+          setLoginStep('baby-setup');
+        } else {
+          setLoginStep('login');
+          // 获取用户数据
+          fetchUserData(loginEmail);
+        }
+      } else {
+        alert(data.message || '登录失败');
+      }
+    } catch (error) {
+      console.error("Login failed:", error);
+      alert('网络错误，请稍后重试');
+    }
+  };
+
+  const fetchUserData = async (userEmail: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/get-user-data?email=${userEmail}`);
+      const data = await response.json();
+      if (data.success && data.data) {
+        const userData = data.data;
+        if (userData.profile) {
+          setBabyName(userData.profile.babyName || '宝宝');
+          setBabyBirthday(userData.profile.babyBirthday || '2025-08-07');
+          setBabyPhoto(userData.profile.babyPhoto || null);
+          setUserRole(userData.profile.role || '妈妈');
+        }
+        setMeals(userData.meals || []);
+        setVitamins(userData.vitamins || []);
+        setWeightRecords(userData.weightRecords || []);
+        setPoopRecords(userData.poopRecords || []);
+        setSleepRecords(userData.sleepRecords || []);
+        setMembers(userData.members || []);
+        setIngredients(userData.ingredients || INITIAL_INGREDIENTS);
+        setSafeIngredients(userData.safeIngredients || []);
+        setAllergicIngredients(userData.allergicIngredients || []);
+      }
+    } catch (error) {
+      console.error("Fetch user data failed:", error);
+    }
+  };
+
   const saveBabyProfile = async (data: { babyName: string, babyBirthday: string, role: FamilyRole, babyPhoto?: string | null }) => {
     if (!email) return;
     try {
-      await saveUserData('profile', {
-        babyName: data.babyName,
-        babyBirthday: data.babyBirthday,
-        babyPhoto: data.babyPhoto || null,
-        role: data.role
+      const response = await fetch(`${API_BASE_URL}/api/save-user-data`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          type: 'profile',
+          data: {
+            babyName: data.babyName,
+            babyBirthday: data.babyBirthday,
+            babyPhoto: data.babyPhoto || null,
+            role: data.role
+          }
+        })
       });
-      setUserRole(data.role);
-      localStorage.setItem('baby_food_role', data.role);
-      setLoginStep('login');
-      setIsLoggedIn(true);
-      updateIsEditingBabyProfile(false);
+      const result = await response.json();
+      if (result.success) {
+        setUserRole(data.role);
+        setLoginStep('login');
+        setIsLoggedIn(true);
+        updateIsEditingBabyProfile(false);
+      } else {
+        alert('保存失败');
+      }
     } catch (error) {
-      console.error("Failed to save profile:", error);
+      console.error("Save profile failed:", error);
     }
   };
 
@@ -350,22 +469,28 @@ function AppContent() {
       return;
     }
     try {
-      const response = await fetch('/api/add-member', {
+      const response = await fetch(`${API_BASE_URL}/api/add-member`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, username: newMemberData.username, role: newMemberData.role })
+        body: JSON.stringify({
+          email,
+          member: {
+            username: newMemberData.username,
+            role: newMemberData.role,
+            isPrimary: false
+          }
+        })
       });
       const result = await response.json();
       if (result.success) {
-        setMembers(result.members);
         setIsAddingMember(false);
         setNewMemberData({ username: '', role: '爸爸' });
+        fetchUserData(email);
       } else {
-        alert(result.message || '添加失败');
+        alert('添加失败');
       }
     } catch (error) {
-      console.error("Failed to add member:", error);
-      alert('网络错误，请重试');
+      console.error("Add member failed:", error);
     }
   };
 
@@ -449,136 +574,139 @@ function AppContent() {
 
   const calculatedBabyInfo = calculateBabyInfo();
 
-  // --- 3. 数据同步与持久化 ---
-  const fetchUserData = async () => {
-    if (!email) return;
+  const handleImportData = async () => {
+    if (!migrationJson || !email) return;
     try {
-      const response = await fetch(`/api/get-user-data?email=${encodeURIComponent(email)}`);
+      const oldData = JSON.parse(migrationJson);
+      const response = await fetch(`${API_BASE_URL}/api/import-data`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, data: oldData })
+      });
       const result = await response.json();
-      if (result.success && result.data) {
-        const data = result.data;
-        setBabyName(data.profile?.babyName || '宝宝');
-        setBabyBirthday(data.profile?.babyBirthday || '2025-08-07');
-        setBabyPhoto(data.profile?.babyPhoto || null);
-        if (!userRole) {
-          setUserRole(data.profile?.role || '妈妈');
-        }
-        setMembers(data.members || []);
-        setMeals(data.meals || []);
-        setVitamins(data.vitamins || []);
-        setWeightRecords(data.weightRecords || []);
-        setPoopRecords(data.poopRecords || []);
-        setSleepRecords(data.sleepRecords || []);
-        setSafeIngredients(data.safeIngredients || []);
-        setAllergicIngredients(data.allergicIngredients || []);
+      if (result.success) {
+        alert("数据同步成功！");
+        setIsMigratingData(false);
+        setMigrationJson('');
+        fetchUserData(email);
+      } else {
+        alert("导入失败");
       }
     } catch (error) {
-      console.error("Failed to fetch user data:", error);
+      console.error("Import failed:", error);
+      alert("导入失败，请检查格式");
     }
   };
+
+  const handleExportData = async () => {
+    if (!email) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/export-data?email=${email}`);
+      const result = await response.json();
+      if (result.success) {
+        const dataStr = JSON.stringify(result.data, null, 2);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `baby_data_backup_${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else {
+        alert("导出失败");
+      }
+    } catch (error) {
+      console.error("Export failed:", error);
+    }
+  };
+
+  // --- 3. 数据同步与持久化 ---
+  useEffect(() => {
+    // 检查本地存储是否有已登录的用户
+    const savedEmail = localStorage.getItem('baby_food_email');
+    if (savedEmail) {
+      setUser({ uid: savedEmail, email: savedEmail });
+      setEmail(savedEmail);
+      setIsLoggedIn(true);
+      fetchUserData(savedEmail);
+    }
+    setIsAuthReady(true);
+  }, []);
+
+  // 自动保存逻辑：当本地修改时间更新时，同步数据到后端
+  useEffect(() => {
+    if (!email || lastLocalChangeTime === 0) return;
+
+    const startTime = lastLocalChangeTime;
+    const timer = setTimeout(async () => {
+      try {
+        const dataToSave = [
+          { type: 'profile', data: { babyName, babyBirthday, babyPhoto, role: userRole } },
+          { type: 'meals', data: meals },
+          { type: 'vitamins', data: vitamins },
+          { type: 'weightRecords', data: weightRecords },
+          { type: 'poopRecords', data: poopRecords },
+          { type: 'sleepRecords', data: sleepRecords },
+          { type: 'members', data: members },
+          { type: 'ingredients', data: ingredients },
+          { type: 'safeIngredients', data: safeIngredients },
+          { type: 'allergicIngredients', data: allergicIngredients }
+        ];
+
+        for (const item of dataToSave) {
+          await fetch(`${API_BASE_URL}/api/save-user-data`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, type: item.type, data: item.data })
+          });
+        }
+        console.log("数据已自动同步到后端");
+        // 如果在保存期间没有新的本地修改，则重置标记
+        if (lastLocalChangeTime === startTime) {
+          setLastLocalChangeTime(0);
+        }
+      } catch (error) {
+        console.error("Auto-save failed:", error);
+      }
+    }, 2000); // 2秒防抖
+
+    return () => clearTimeout(timer);
+  }, [lastLocalChangeTime, email, babyName, babyBirthday, babyPhoto, userRole, meals, vitamins, weightRecords, poopRecords, sleepRecords, members, ingredients, safeIngredients, allergicIngredients]);
+
+  // 轮询逻辑：定期从后端拉取最新数据（多端同步）
+  useEffect(() => {
+    if (!email || !isLoggedIn) return;
+
+    const interval = setInterval(() => {
+      // 关键保护：如果过去 5 秒内有本地修改且尚未保存成功，跳过轮询，避免覆盖未保存的本地更改
+      if (lastLocalChangeTime !== 0 && (Date.now() - lastLocalChangeTime < 5000)) {
+        return;
+      }
+      fetchUserData(email);
+    }, 10000); // 每 10 秒轮询一次
+
+    return () => clearInterval(interval);
+  }, [email, isLoggedIn, lastLocalChangeTime]);
 
   const saveUserData = async (type: string, data: any) => {
     if (!email) return;
     try {
-      await fetch('/api/save-user-data', {
+      await fetch(`${API_BASE_URL}/api/save-user-data`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, type, data })
       });
     } catch (error) {
-      console.error(`Failed to save ${type}:`, error);
+      console.error("Save user data failed:", error);
     }
   };
 
-  // 初始加载
-  useEffect(() => {
-    if (isLoggedIn && email) {
-      fetchUserData();
-    }
-  }, [isLoggedIn, email]);
-
-  // 自动保存逻辑 (防抖)
-  useEffect(() => {
-    if (!isLoggedIn || !email) return;
-    const timer = setTimeout(() => {
-      if (lastLocalChangeTime > 0) {
-        saveUserData('profile', { babyName, babyBirthday, babyPhoto, role: userRole });
-        saveUserData('meals', meals);
-        saveUserData('vitamins', vitamins);
-        saveUserData('weightRecords', weightRecords);
-        saveUserData('poopRecords', poopRecords);
-        saveUserData('sleepRecords', sleepRecords);
-        saveUserData('safeIngredients', safeIngredients);
-        saveUserData('allergicIngredients', allergicIngredients);
-      }
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [meals, vitamins, weightRecords, poopRecords, sleepRecords, safeIngredients, allergicIngredients, babyName, babyBirthday, babyPhoto, userRole, lastLocalChangeTime]);
-
-  const handleSendCode = async () => {
-    if (!loginEmail) return;
-    setIsSendingCode(true);
-    try {
-      const response = await fetch('/api/send-code', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: loginEmail })
-      });
-      const result = await response.json();
-      if (result.success) {
-        setLoginStep('code');
-      } else {
-        alert(result.message);
-      }
-    } catch (error) {
-      console.error("Failed to send code:", error);
-    } finally {
-      setIsSendingCode(false);
-    }
-  };
-
-  const handleLogin = async () => {
-    if (!loginEmail || !verificationCode) return;
-    try {
-      const response = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: loginEmail, code: verificationCode })
-      });
-      const result = await response.json();
-      if (result.success) {
-        localStorage.setItem('baby_food_email', loginEmail);
-        setEmail(loginEmail);
-        
-        // 获取用户数据以决定下一步
-        const dataRes = await fetch(`/api/get-user-data?email=${encodeURIComponent(loginEmail)}`);
-        const dataResult = await dataRes.json();
-        
-        if (dataResult.success && dataResult.data) {
-          const data = dataResult.data;
-          setMembers(data.members || []);
-          
-          // 如果是默认数据，说明是新用户
-          if (data.profile?.babyName === '宝宝') {
-            setLoginStep('baby-setup');
-          } else if (data.members && data.members.length > 1) {
-            setLoginStep('member-selection');
-          } else {
-            setIsLoggedIn(true);
-          }
-        } else {
-          setLoginStep('baby-setup');
-        }
-      } else {
-        alert(result.message);
-      }
-    } catch (error) {
-      console.error("Login failed:", error);
-    }
-  };
-
-  const handleLogout = () => {
+  const handleLogout = async () => {
     localStorage.removeItem('baby_food_email');
+    resetAllData(); // 彻底清理本地业务数据
+    setUser(null);
     setEmail(null);
     setIsLoggedIn(false);
     setActivePage('home');
@@ -2274,6 +2402,71 @@ function AppContent() {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* 数据管理 */}
+            <div className="duo-card p-6 bg-white space-y-4">
+              <h3 className="text-sm font-black text-gray-700 uppercase tracking-widest">数据管理</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <button 
+                  onClick={() => setIsMigratingData(true)}
+                  className="flex flex-col items-center gap-3 p-6 bg-gray-50 rounded-[28px] border-2 border-gray-100 hover:border-orange-500 hover:bg-orange-50 transition-all group"
+                >
+                  <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-2xl shadow-sm group-hover:scale-110 transition-transform">
+                    📥
+                  </div>
+                  <span className="font-black text-sm text-gray-700 group-hover:text-orange-600">导入老数据</span>
+                </button>
+                <button 
+                  onClick={handleExportData}
+                  className="flex flex-col items-center gap-3 p-6 bg-gray-50 rounded-[28px] border-2 border-gray-100 hover:border-blue-500 hover:bg-blue-50 transition-all group"
+                >
+                  <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-2xl shadow-sm group-hover:scale-110 transition-transform">
+                    📤
+                  </div>
+                  <span className="font-black text-sm text-gray-700 group-hover:text-blue-600">导出备份</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 数据迁移弹窗 */}
+            {isMigratingData && (
+              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-5">
+                <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-md rounded-[32px] p-8 space-y-6 shadow-2xl">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-2xl font-black text-gray-800">导入老数据</h3>
+                    <button onClick={() => setIsMigratingData(false)} className="text-gray-400 hover:text-gray-600">
+                      <X className="w-6 h-6" />
+                    </button>
+                  </div>
+                  <div className="space-y-4">
+                    <p className="text-sm font-bold text-gray-400">
+                      请将您之前在阿里云数据库导出的 JSON 数据粘贴到下方。系统将自动合并喂养、维生素、生长等记录。
+                    </p>
+                    <textarea 
+                      value={migrationJson}
+                      onChange={(e) => setMigrationJson(e.target.value)}
+                      placeholder='例如: {"meals": [...], "vitamins": [...] }'
+                      className="w-full h-48 bg-gray-50 border-2 border-gray-100 rounded-2xl px-5 py-4 font-mono text-xs focus:outline-none focus:border-orange-500 transition-colors resize-none"
+                    />
+                    <div className="flex gap-4">
+                      <button 
+                        onClick={() => setIsMigratingData(false)}
+                        className="flex-1 py-5 bg-gray-100 rounded-[24px] font-black text-gray-400 text-lg"
+                      >
+                        取消
+                      </button>
+                      <button 
+                        onClick={handleImportData}
+                        disabled={!migrationJson}
+                        className="flex-1 py-5 bg-orange-500 rounded-[24px] font-black text-white text-lg shadow-lg shadow-orange-200 active:scale-95 transition-all disabled:opacity-50"
+                      >
+                        确认同步
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
               </div>
             )}
 

@@ -184,6 +184,60 @@ async function startServer() {
     res.json({ success: true, message: "添加成功", members: db.users[email].members });
   });
 
+  // 6. 数据导入 (用于同步老数据)
+  app.post('/api/import-data', (req, res) => {
+    const { email, oldData } = req.body;
+    if (!email || !oldData) return res.status(400).json({ success: false, message: "参数不全" });
+
+    const db = readDB();
+    if (!db.users[email]) {
+      // 如果用户不存在，先初始化
+      db.users[email] = {
+        profile: { babyName: "宝宝", babyBirthday: "2025-08-07" },
+        members: [{ username: email, role: "妈妈", isPrimary: true }],
+        meals: [],
+        vitamins: [],
+        weightRecords: [],
+        poopRecords: [],
+        sleepRecords: [],
+        safeIngredients: [],
+        allergicIngredients: []
+      };
+    }
+
+    // 合并数据 (去重)
+    const merge = (newList: any[], oldList: any[]) => {
+      if (!oldList || !Array.isArray(oldList)) return newList;
+      const existingIds = new Set(newList.map(item => item.id));
+      const filteredOld = oldList.filter(item => !existingIds.has(item.id));
+      return [...newList, ...filteredOld];
+    };
+
+    const user = db.users[email];
+    user.meals = merge(user.meals || [], oldData.meals);
+    user.vitamins = merge(user.vitamins || [], oldData.vitamins);
+    user.weightRecords = merge(user.weightRecords || [], oldData.weightRecords);
+    user.poopRecords = merge(user.poopRecords || [], oldData.poopRecords);
+    user.sleepRecords = merge(user.sleepRecords || [], oldData.sleepRecords);
+    user.safeIngredients = Array.from(new Set([...(user.safeIngredients || []), ...(oldData.safeIngredients || [])]));
+    user.allergicIngredients = Array.from(new Set([...(user.allergicIngredients || []), ...(oldData.allergicIngredients || [])]));
+
+    writeDB(db);
+    res.json({ success: true, message: "数据同步成功", data: user });
+  });
+
+  // 7. 数据导出 (备份)
+  app.get('/api/export-data', (req, res) => {
+    const { email } = req.query;
+    if (!email) return res.status(400).json({ success: false, message: "未识别身份" });
+
+    const db = readDB();
+    const userData = db.users[email as string];
+    if (!userData) return res.status(404).json({ success: false, message: "用户不存在" });
+
+    res.json({ success: true, data: userData });
+  });
+
   // --- Vite 中间件配置 ---
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import('vite');
