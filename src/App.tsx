@@ -275,7 +275,8 @@ function AppContent() {
   const [isAddingMember, setIsAddingMember] = useState(false);
   const [isMigratingData, setIsMigratingData] = useState(false);
   const [migrationJson, setMigrationJson] = useState('');
-  const [newMemberData, setNewMemberData] = useState({ username: '', role: '爸爸' as FamilyRole });
+  const [newMemberData, setNewMemberData] = useState({ username: '', email: '', role: '爸爸' as FamilyRole });
+  const [familyOwnerEmail, setFamilyOwnerEmail] = useState<string | null>(localStorage.getItem('baby_family_owner') || null);
 
   const [activePage, setActivePage] = useState<Page>('home');
   const [selectedMealId, setSelectedMealId] = useState<string | null>(null);
@@ -388,13 +389,22 @@ function AppContent() {
         setUser({ uid: loginEmail, email: loginEmail });
         setEmail(loginEmail);
         setIsLoggedIn(true);
-        // 如果是新用户，可能需要设置宝宝资料
+
+        // 处理家庭共享逻辑：如果后端返回了主账号邮箱
+        if (data.familyOwnerEmail) {
+          localStorage.setItem('baby_family_owner', data.familyOwnerEmail);
+          setFamilyOwnerEmail(data.familyOwnerEmail);
+          fetchUserData(data.familyOwnerEmail);
+        } else {
+          localStorage.removeItem('baby_family_owner');
+          setFamilyOwnerEmail(null);
+          fetchUserData(loginEmail);
+        }
+
         if (data.isNewUser) {
           setLoginStep('baby-setup');
         } else {
           setLoginStep('login');
-          // 获取用户数据
-          fetchUserData(loginEmail);
         }
       } else {
         alert(data.message || '登录失败');
@@ -464,8 +474,9 @@ function AppContent() {
   };
 
   const handleAddMember = async () => {
-    if (!email || !newMemberData.username || !newMemberData.role) {
-      alert('请填写完整信息');
+    const targetEmail = familyOwnerEmail || email;
+    if (!targetEmail || !newMemberData.username || !newMemberData.role || !newMemberData.email) {
+      alert('请填写完整信息（包括成员邮箱）');
       return;
     }
     try {
@@ -473,24 +484,24 @@ function AppContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email,
-          member: {
-            username: newMemberData.username,
-            role: newMemberData.role,
-            isPrimary: false
-          }
+          ownerEmail: targetEmail, // 主账号
+          memberEmail: newMemberData.email, // 要关联的子账号
+          username: newMemberData.username,
+          role: newMemberData.role
         })
       });
       const result = await response.json();
       if (result.success) {
         setIsAddingMember(false);
-        setNewMemberData({ username: '', role: '爸爸' });
-        fetchUserData(email);
+        setNewMemberData({ username: '', email: '', role: '爸爸' as FamilyRole });
+        fetchUserData(targetEmail);
+        alert('添加成功！该成员现在可以用自己的邮箱登录并共享数据了。');
       } else {
-        alert('添加失败');
+        alert(result.message || '添加失败，请确保该邮箱已注册');
       }
     } catch (error) {
       console.error("Add member failed:", error);
+      alert('网络错误');
     }
   };
 
@@ -637,7 +648,8 @@ function AppContent() {
 
   // 自动保存逻辑：当本地修改时间更新时，同步数据到后端
   useEffect(() => {
-    if (!email || lastLocalChangeTime === 0) return;
+    const targetEmail = familyOwnerEmail || email;
+    if (!targetEmail || lastLocalChangeTime === 0) return;
 
     const startTime = lastLocalChangeTime;
     const timer = setTimeout(async () => {
@@ -659,13 +671,14 @@ function AppContent() {
           await fetch(`${API_BASE_URL}/api/save-user-data`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, type: item.type, data: item.data })
+            body: JSON.stringify({ email: targetEmail, type: item.type, data: item.data })
           });
         }
         console.log("数据已自动同步到后端");
         // 如果在保存期间没有新的本地修改，则重置标记
         if (lastLocalChangeTime === startTime) {
           setLastLocalChangeTime(0);
+          lastLocalChangeTimeRef.current = 0;
         }
       } catch (error) {
         console.error("Auto-save failed:", error);
@@ -673,22 +686,23 @@ function AppContent() {
     }, 2000); // 2秒防抖
 
     return () => clearTimeout(timer);
-  }, [lastLocalChangeTime, email, babyName, babyBirthday, babyPhoto, userRole, meals, vitamins, weightRecords, poopRecords, sleepRecords, members, ingredients, safeIngredients, allergicIngredients]);
+  }, [lastLocalChangeTime, email, familyOwnerEmail, babyName, babyBirthday, babyPhoto, userRole, meals, vitamins, weightRecords, poopRecords, sleepRecords, members, ingredients, safeIngredients, allergicIngredients]);
 
   // 轮询逻辑：定期从后端拉取最新数据（多端同步）
   useEffect(() => {
-    if (!email || !isLoggedIn) return;
+    const targetEmail = familyOwnerEmail || email;
+    if (!targetEmail || !isLoggedIn) return;
 
     const interval = setInterval(() => {
       // 关键保护：如果过去 5 秒内有本地修改且尚未保存成功，跳过轮询，避免覆盖未保存的本地更改
       if (lastLocalChangeTime !== 0 && (Date.now() - lastLocalChangeTime < 5000)) {
         return;
       }
-      fetchUserData(email);
+      fetchUserData(targetEmail);
     }, 10000); // 每 10 秒轮询一次
 
     return () => clearInterval(interval);
-  }, [email, isLoggedIn, lastLocalChangeTime]);
+  }, [email, familyOwnerEmail, isLoggedIn, lastLocalChangeTime]);
 
   const saveUserData = async (type: string, data: any) => {
     if (!email) return;
@@ -705,9 +719,11 @@ function AppContent() {
 
   const handleLogout = async () => {
     localStorage.removeItem('baby_food_email');
+    localStorage.removeItem('baby_family_owner');
     resetAllData(); // 彻底清理本地业务数据
     setUser(null);
     setEmail(null);
+    setFamilyOwnerEmail(null);
     setIsLoggedIn(false);
     setActivePage('home');
     setLoginStep('login');
@@ -2483,6 +2499,16 @@ function AppContent() {
                         value={newMemberData.username}
                         onChange={(e) => setNewMemberData({ ...newMemberData, username: e.target.value })}
                         placeholder="输入用户名"
+                        className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl px-5 py-4 font-black focus:outline-none focus:border-orange-500 transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">成员登录邮箱</label>
+                      <input 
+                        type="email" 
+                        value={newMemberData.email}
+                        onChange={(e) => setNewMemberData({ ...newMemberData, email: e.target.value })}
+                        placeholder="输入该成员的登录邮箱"
                         className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl px-5 py-4 font-black focus:outline-none focus:border-orange-500 transition-colors"
                       />
                     </div>
