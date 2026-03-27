@@ -397,11 +397,11 @@ function AppContent() {
         if (data.familyOwnerEmail) {
           localStorage.setItem('baby_family_owner', data.familyOwnerEmail);
           setFamilyOwnerEmail(data.familyOwnerEmail);
-          fetchUserData(data.familyOwnerEmail);
+          fetchUserData(data.familyOwnerEmail, loginEmail);
         } else {
           localStorage.removeItem('baby_family_owner');
           setFamilyOwnerEmail(null);
-          fetchUserData(loginEmail);
+          fetchUserData(loginEmail, loginEmail);
         }
 
         if (data.isNewUser) {
@@ -418,9 +418,10 @@ function AppContent() {
     }
   };
 
-  const fetchUserData = async (userEmail: string) => {
+  const fetchUserData = async (targetEmail: string, currentUserEmail?: string) => {
+    const activeEmail = currentUserEmail || email;
     try {
-      const response = await fetch(`${API_BASE_URL}/api/get-user-data?email=${userEmail}`);
+      const response = await fetch(`${API_BASE_URL}/api/get-user-data?email=${targetEmail}`);
       const data = await response.json();
       if (data.success && data.data) {
         const userData = data.data;
@@ -430,7 +431,7 @@ function AppContent() {
           setBabyPhoto(userData.profile.babyPhoto || null);
           
           // 优先从成员列表中查找当前用户的角色
-          const currentMember = (userData.members || []).find((m: any) => m.email === userEmail);
+          const currentMember = (userData.members || []).find((m: any) => m.email === activeEmail);
           if (currentMember) {
             setUserRole(currentMember.role);
           } else {
@@ -472,12 +473,13 @@ function AppContent() {
       });
       const result = await response.json();
       if (result.success) {
-        setUserRole(data.role);
-        setLoginStep('login');
-        setIsLoggedIn(true);
+        if (!isLoggedIn) {
+          setIsLoggedIn(true);
+          setLoginStep('login');
+        }
         updateIsEditingBabyProfile(false);
         // 登录成功后获取最新数据
-        fetchUserData(email);
+        fetchUserData(targetEmail);
       } else {
         alert(result.message || '保存失败');
       }
@@ -3077,7 +3079,7 @@ function AppContent() {
                         setBabyName(babyName);
                         setBabyBirthday(babyBirthday);
                         // 登录成功后获取最新数据
-                        fetchUserData(email);
+                        fetchUserData(targetEmail);
                         alert("保存成功");
                       } else {
                         alert(data.message || "保存失败");

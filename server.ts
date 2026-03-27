@@ -44,12 +44,16 @@ async function startServer() {
     target: 'http://47.79.19.177:3000', 
     changeOrigin: true,
     pathRewrite: { '^/proxy': '' },
-    onProxyReq: (proxyReq, req, res) => {
-      // 可以在这里添加自定义头
-    },
-    onError: (err, req, res) => {
-      console.error('Proxy Error:', err);
-      res.status(500).send('Proxy Error');
+    on: {
+      proxyReq: (proxyReq, req, res) => {
+        // 可以在这里添加自定义头
+      },
+      error: (err, req, res) => {
+        console.error('Proxy Error:', err);
+        if (res && 'status' in res && typeof res.status === 'function') {
+          res.status(500).send('Proxy Error');
+        }
+      }
     }
   }));
 
@@ -128,8 +132,15 @@ async function startServer() {
     delete verificationCodes[email];
     const db = readDB();
     
-    // 如果是新用户，初始化空间
-    if (!db.users[email]) {
+    // 关键逻辑：判断用户身份
+    const familyOwnerEmail = db.familyMappings[email] || null;
+    const isPrimaryAccount = !!db.users[email];
+    const isSubAccount = !!familyOwnerEmail;
+    
+    // 只有既不是子账号，也不是已有主账号的用户，才被视为“新用户”并初始化空间
+    const isNewUser = !isPrimaryAccount && !isSubAccount;
+
+    if (isNewUser) {
       db.users[email] = {
         profile: { babyName: "宝宝", babyBirthday: "2025-08-07" },
         members: [{ username: email, role: "妈妈", isPrimary: true }],
@@ -142,7 +153,7 @@ async function startServer() {
         allergicIngredients: []
       };
       writeDB(db);
-    } else if (!db.users[email].members) {
+    } else if (isPrimaryAccount && !db.users[email].members) {
       // 为老用户兼容新字段
       db.users[email].members = [{ username: email, role: db.users[email].profile.role || "妈妈", isPrimary: true }];
       writeDB(db);
@@ -152,8 +163,8 @@ async function startServer() {
       success: true, 
       message: "登录成功", 
       email,
-      familyOwnerEmail: db.familyMappings[email] || null,
-      isNewUser: !db.users[email] && !db.familyMappings[email]
+      familyOwnerEmail,
+      isNewUser
     });
   });
 
