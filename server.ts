@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 
 // 强制加载 .env 配置文件
 dotenv.config();
@@ -37,9 +38,24 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   app.use(cors());
 
+  // --- 代理配置 (解决 HTTPS 页面请求 HTTP 接口的 Mixed Content 问题) ---
+  // 如果您希望前端直接请求您的阿里云服务器，可以使用这个代理
+  app.use('/proxy', createProxyMiddleware({ 
+    target: 'http://47.79.19.177:3000', 
+    changeOrigin: true,
+    pathRewrite: { '^/proxy': '' },
+    onProxyReq: (proxyReq, req, res) => {
+      // 可以在这里添加自定义头
+    },
+    onError: (err, req, res) => {
+      console.error('Proxy Error:', err);
+      res.status(500).send('Proxy Error');
+    }
+  }));
+
   // 初始化数据库文件
   if (!fs.existsSync(DB_FILE)) {
-    const initialDB = { users: {} };
+    const initialDB = { users: {}, familyMappings: {} };
     fs.writeFileSync(DB_FILE, JSON.stringify(initialDB, null, 2));
   }
 
@@ -49,11 +65,12 @@ async function startServer() {
     if (memoryDB) return memoryDB;
     try {
       const dataStr = fs.readFileSync(DB_FILE, "utf-8");
-      memoryDB = JSON.parse(dataStr || '{"users":{}}');
+      memoryDB = JSON.parse(dataStr || '{"users":{}, "familyMappings":{}}');
       if (!memoryDB.users) memoryDB.users = {};
+      if (!memoryDB.familyMappings) memoryDB.familyMappings = {};
       return memoryDB;
     } catch (e) {
-      return { users: {} };
+      return { users: {}, familyMappings: {} };
     }
   }
 
@@ -131,7 +148,13 @@ async function startServer() {
       writeDB(db);
     }
 
-    res.json({ success: true, message: "登录成功", email });
+    res.json({ 
+      success: true, 
+      message: "登录成功", 
+      email,
+      familyOwnerEmail: db.familyMappings[email] || null,
+      isNewUser: !db.users[email] && !db.familyMappings[email]
+    });
   });
 
   // 3. 获取用户数据 (SaaS 隔离)
@@ -166,19 +189,25 @@ async function startServer() {
 
   // 5. 添加家庭成员
   app.post('/api/add-member', (req, res) => {
-    const { email, username, role } = req.body;
-    if (!email || !username || !role) return res.status(400).json({ success: false, message: "参数不全" });
+    const { email, memberEmail, username, role } = req.body;
+    if (!email || !memberEmail || !username || !role) return res.status(400).json({ success: false, message: "参数不全" });
 
     const db = readDB();
-    if (!db.users[email]) return res.status(404).json({ success: false, message: "用户不存在" });
+    if (!db.users[email]) return res.status(404).json({ success: false, message: "主账号不存在" });
 
     if (!db.users[email].members) db.users[email].members = [];
     
     // 检查是否已存在
-    const exists = db.users[email].members.find((m: any) => m.username === username);
+    const exists = db.users[email].members.find((m: any) => m.username === username || m.email === memberEmail);
     if (exists) return res.status(400).json({ success: false, message: "该成员已存在" });
 
-    db.users[email].members.push({ username, role, isPrimary: false });
+    // 添加到主账号的成员列表
+    db.users[email].members.push({ username, email: memberEmail, role, isPrimary: false });
+    
+    // 建立家庭映射关系：子账号 -> 主账号
+    if (!db.familyMappings) db.familyMappings = {};
+    db.familyMappings[memberEmail] = email;
+    
     writeDB(db);
 
     res.json({ success: true, message: "添加成功", members: db.users[email].members });

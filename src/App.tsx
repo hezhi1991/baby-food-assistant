@@ -105,7 +105,10 @@ const getLocalDateString = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
-const API_BASE_URL = 'http://47.79.19.177:3000';
+// --- 核心配置 ---
+// 使用相对路径，通过本地服务器代理请求到阿里云服务器 (解决 HTTPS 页面请求 HTTP 接口的 Mixed Content 问题)
+const API_BASE_URL = '/proxy'; 
+// 如果您想直接使用本地服务器逻辑，请将上面改为 const API_BASE_URL = '';
 
 // --- 类型定义 ---
 type Page = 'home' | 'recipes' | 'wiki' | 'ai' | 'profile' | 'meal-detail' | 'plan' | 'history' | 'care' | 'baby-selection';
@@ -425,7 +428,14 @@ function AppContent() {
           setBabyName(userData.profile.babyName || '宝宝');
           setBabyBirthday(userData.profile.babyBirthday || '2025-08-07');
           setBabyPhoto(userData.profile.babyPhoto || null);
-          setUserRole(userData.profile.role || '妈妈');
+          
+          // 优先从成员列表中查找当前用户的角色
+          const currentMember = (userData.members || []).find((m: any) => m.email === userEmail);
+          if (currentMember) {
+            setUserRole(currentMember.role);
+          } else {
+            setUserRole(userData.profile.role || '妈妈');
+          }
         }
         setMeals(userData.meals || []);
         setVitamins(userData.vitamins || []);
@@ -443,13 +453,14 @@ function AppContent() {
   };
 
   const saveBabyProfile = async (data: { babyName: string, babyBirthday: string, role: FamilyRole, babyPhoto?: string | null }) => {
-    if (!email) return;
+    const targetEmail = familyOwnerEmail || email;
+    if (!targetEmail) return;
     try {
       const response = await fetch(`${API_BASE_URL}/api/save-user-data`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email,
+          email: targetEmail,
           type: 'profile',
           data: {
             babyName: data.babyName,
@@ -465,8 +476,10 @@ function AppContent() {
         setLoginStep('login');
         setIsLoggedIn(true);
         updateIsEditingBabyProfile(false);
+        // 登录成功后获取最新数据
+        fetchUserData(email);
       } else {
-        alert('保存失败');
+        alert(result.message || '保存失败');
       }
     } catch (error) {
       console.error("Save profile failed:", error);
@@ -705,12 +718,13 @@ function AppContent() {
   }, [email, familyOwnerEmail, isLoggedIn, lastLocalChangeTime]);
 
   const saveUserData = async (type: string, data: any) => {
-    if (!email) return;
+    const targetEmail = familyOwnerEmail || email;
+    if (!targetEmail) return;
     try {
       await fetch(`${API_BASE_URL}/api/save-user-data`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, type, data })
+        body: JSON.stringify({ email: targetEmail, type, data })
       });
     } catch (error) {
       console.error("Save user data failed:", error);
@@ -3038,30 +3052,39 @@ function AppContent() {
                 <button 
                   disabled={isSaving}
                   onClick={async () => {
+                    const targetEmail = familyOwnerEmail || email;
+                    if (!targetEmail) return;
                     updateIsSaving(true);
                     try {
-                      const response = await fetch('/api/save-profile', {
+                      const response = await fetch(`${API_BASE_URL}/api/save-user-data`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
-                          username: email, 
-                          babyName, 
-                          babyBirthday, 
-                          role: userRole,
-                          babyPhoto
+                          email: targetEmail, // 统一使用 email
+                          type: 'profile',
+                          data: {
+                            babyName, 
+                            babyBirthday, 
+                            role: userRole,
+                            babyPhoto
+                          }
                         })
                       });
                       const data = await response.json();
-                        if (data.success) {
-                          updateIsEditingBabyProfile(false);
-                          updateIsSaving(false);
-                          // if (currentBabyId) await fetchBabyData(currentBabyId);
-                        } else {
+                      if (data.success) {
+                        updateIsEditingBabyProfile(false);
+                        // 刷新本地显示
+                        setBabyName(babyName);
+                        setBabyBirthday(babyBirthday);
+                        // 登录成功后获取最新数据
+                        fetchUserData(email);
+                        alert("保存成功");
+                      } else {
                         alert(data.message || "保存失败");
                       }
                     } catch (error) {
                       console.error("保存资料失败:", error);
-                      alert("服务器连接失败");
+                      alert("无法连接服务器，请检查后端服务是否正常运行");
                     } finally {
                       updateIsSaving(false);
                     }
