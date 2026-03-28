@@ -19,6 +19,7 @@ import {
   Camera,
   MessageSquare,
   X,
+  Pencil,
   Clock,
   Bell,
   User,
@@ -276,6 +277,8 @@ function AppContent() {
   const [babyInfo, setBabyInfo] = useState<any | null>(null);
   const [members, setMembers] = useState<any[]>([]);
   const [isAddingMember, setIsAddingMember] = useState(false);
+  const [isEditingMemberEmail, setIsEditingMemberEmail] = useState(false);
+  const [editingMemberData, setEditingMemberData] = useState<{ oldEmail: string, newEmail: string, role: string } | null>(null);
   const [isMigratingData, setIsMigratingData] = useState(false);
   const [migrationJson, setMigrationJson] = useState('');
   const [newMemberData, setNewMemberData] = useState({ username: '', email: '', role: '爸爸' as FamilyRole });
@@ -517,6 +520,44 @@ function AppContent() {
     } catch (error) {
       console.error("Add member failed:", error);
       alert('网络错误');
+    }
+  };
+
+  const handleUpdateMemberEmail = async () => {
+    const targetEmail = familyOwnerEmail || email;
+    if (!targetEmail || !editingMemberData || !editingMemberData.newEmail) {
+      alert('请输入新邮箱');
+      return;
+    }
+    
+    // 如果没有变化，直接关闭
+    if (editingMemberData.newEmail === editingMemberData.oldEmail) {
+      setIsEditingMemberEmail(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/update-member-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: targetEmail, // 主账号邮箱
+          oldMemberEmail: editingMemberData.oldEmail,
+          newMemberEmail: editingMemberData.newEmail
+        })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setIsEditingMemberEmail(false);
+        setEditingMemberData(null);
+        fetchUserData(targetEmail);
+        alert('修改成功');
+      } else {
+        alert(data.message || '修改失败');
+      }
+    } catch (error) {
+      console.error("Update member email failed:", error);
+      alert('网络错误，请稍后重试');
     }
   };
 
@@ -2430,6 +2471,18 @@ function AppContent() {
                         {userRole === m.role && (
                           <CheckCircle2 className="w-5 h-5 text-orange-500" />
                         )}
+                        {!m.isPrimary && (
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingMemberData({ oldEmail: m.email, newEmail: m.email, role: m.role });
+                              setIsEditingMemberEmail(true);
+                            }}
+                            className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+                          >
+                            <Pencil className="w-4 h-4 text-gray-400" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -2495,6 +2548,50 @@ function AppContent() {
                         className="flex-1 py-5 bg-orange-500 rounded-[24px] font-black text-white text-lg shadow-lg shadow-orange-200 active:scale-95 transition-all disabled:opacity-50"
                       >
                         确认同步
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              </div>
+            )}
+
+            {/* 修改成员邮箱弹窗 */}
+            {isEditingMemberEmail && editingMemberData && (
+              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-5">
+                <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-md rounded-[32px] p-8 space-y-6 shadow-2xl">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-2xl font-black text-gray-800">修改成员邮箱</h3>
+                    <button onClick={() => setIsEditingMemberEmail(false)} className="text-gray-400 hover:text-gray-600">
+                      <X className="w-6 h-6" />
+                    </button>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="p-4 bg-orange-50 rounded-2xl border border-orange-100">
+                      <p className="text-xs font-black text-orange-600 uppercase tracking-widest mb-1">正在修改角色</p>
+                      <p className="text-lg font-black text-gray-800">{editingMemberData.role}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">新登录邮箱</label>
+                      <input 
+                        type="email" 
+                        value={editingMemberData.newEmail}
+                        onChange={(e) => setEditingMemberData({...editingMemberData, newEmail: e.target.value})}
+                        placeholder="输入该成员的新登录邮箱"
+                        className="w-full px-6 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl font-black text-lg focus:outline-none focus:border-orange-500 transition-colors"
+                      />
+                    </div>
+                    <div className="flex gap-4 pt-2">
+                      <button 
+                        onClick={() => setIsEditingMemberEmail(false)}
+                        className="flex-1 py-5 bg-gray-100 rounded-[24px] font-black text-gray-400 text-lg"
+                      >
+                        取消
+                      </button>
+                      <button 
+                        onClick={handleUpdateMemberEmail}
+                        className="flex-1 py-5 bg-orange-500 rounded-[24px] font-black text-white text-lg shadow-lg shadow-orange-200 active:scale-95 transition-all"
+                      >
+                        保存修改
                       </button>
                     </div>
                   </div>
@@ -2893,9 +2990,9 @@ function AppContent() {
   };
 
   return (
-    <div className="max-w-md mx-auto min-h-screen flex flex-col relative bg-white pt-[env(safe-area-inset-top)]">
-      {/* 顶部状态栏占位 */}
-      <div className="h-[env(safe-area-inset-top)] w-full bg-white fixed top-0 z-[100]" />
+    <div className="max-w-md mx-auto min-h-screen flex flex-col relative bg-white pt-0 sm:pt-[env(safe-area-inset-top,0px)]">
+      {/* 顶部状态栏占位 - 增加回退高度 */}
+      <div className="h-[env(safe-area-inset-top,0px)] w-full bg-white fixed top-0 z-[100]" />
       
       {!isLoggedIn ? (
         <main className="flex-1 overflow-y-auto">
@@ -2906,7 +3003,7 @@ function AppContent() {
       ) : (
         <>
           {/* 顶部状态栏模拟 */}
-      <div className="h-16 flex items-center justify-between px-6 font-black text-sm sticky top-0 bg-white/90 backdrop-blur-md z-30 border-b-2 border-gray-100">
+      <div className="h-16 flex items-center justify-between px-6 font-black text-sm sticky top-0 bg-white/90 backdrop-blur-md z-30 border-b-2 border-gray-100 mt-[env(safe-area-inset-top,0px)]">
         <div className="flex items-center gap-2.5">
           <button 
             onClick={() => updateIsEditingBabyProfile(true)}

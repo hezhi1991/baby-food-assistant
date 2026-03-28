@@ -224,7 +224,38 @@ async function startServer() {
     res.json({ success: true, message: "添加成功", members: db.users[email].members });
   });
 
-  // 6. 数据导入 (用于同步老数据)
+  // 7. 修改家庭成员邮箱
+  app.post('/api/update-member-email', (req, res) => {
+    const { email, oldMemberEmail, newMemberEmail } = req.body;
+    if (!email || !oldMemberEmail || !newMemberEmail) return res.status(400).json({ success: false, message: "参数不全" });
+
+    const db = readDB();
+    if (!db.users[email]) return res.status(404).json({ success: false, message: "主账号不存在" });
+
+    // 检查新邮箱是否已被占用
+    if (db.users[newMemberEmail] || (db.familyMappings && db.familyMappings[newMemberEmail] && db.familyMappings[newMemberEmail] !== email)) {
+      return res.status(400).json({ success: false, message: "新邮箱已被其他家庭占用" });
+    }
+
+    // 找到并更新成员列表
+    const memberIndex = db.users[email].members.findIndex((m: any) => m.email === oldMemberEmail);
+    if (memberIndex === -1) return res.status(404).json({ success: false, message: "成员不存在" });
+
+    db.users[email].members[memberIndex].email = newMemberEmail;
+    db.users[email].members[memberIndex].username = newMemberEmail; // 同时更新用户名
+
+    // 更新家庭映射关系
+    if (db.familyMappings) {
+      delete db.familyMappings[oldMemberEmail];
+      db.familyMappings[newMemberEmail] = email;
+    }
+
+    writeDB(db);
+
+    res.json({ success: true, message: "修改成功", members: db.users[email].members });
+  });
+
+  // 8. 数据导入 (用于同步老数据)
   app.post('/api/import-data', (req, res) => {
     const { email, oldData } = req.body;
     if (!email || !oldData) return res.status(400).json({ success: false, message: "参数不全" });
