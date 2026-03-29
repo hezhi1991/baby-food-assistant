@@ -27,9 +27,12 @@ const transporter = nodemailer.createTransport({
   port: 465,
   secure: true,
   auth: {
-    user: process.env.EMAIL_USER, // 从 .env 读取
-    pass: process.env.EMAIL_PASS  // 从 .env 读取
-  }
+    user: process.env.EMAIL_USER?.trim(), // 从 .env 读取并去除空格
+    pass: process.env.EMAIL_PASS?.trim()  // 从 .env 读取并去除空格
+  },
+  connectionTimeout: 10000, // 10秒连接超时
+  greetingTimeout: 10000,   // 10秒问候超时
+  socketTimeout: 15000      // 15秒读取超时
 });
 
 async function startServer() {
@@ -104,21 +107,24 @@ async function startServer() {
     };
 
     try {
+      console.log(`[AUTH] Attempting to send code to ${email}...`);
       // 如果没有配置环境变量，这里仅打印验证码（方便开发调试）
       if (!process.env.EMAIL_USER) {
         console.log(`[DEV] Verification code for ${email}: ${code}`);
         return res.json({ success: true, message: "验证码已发送 (开发模式: 见控制台)" });
       }
 
+      console.log(`[AUTH] Using SMTP user: ${process.env.EMAIL_USER}`);
       await transporter.sendMail({
         from: `"宝宝辅食助手" <${process.env.EMAIL_USER}>`,
         to: email,
         subject: "【宝宝辅食助手】登录验证码",
         text: `亲爱的宝爸宝妈您好：\n\n您的专属登录验证码是：【 ${code} 】。\n请在10分钟内输入。`
       });
+      console.log(`[AUTH] Code sent successfully to ${email}`);
       res.json({ success: true, message: "验证码已发送" });
     } catch (error) {
-      console.error("Send Email Error:", error);
+      console.error("Send Email Error Details:", JSON.stringify(error, Object.getOwnPropertyNames(error)));
       res.status(500).json({ success: false, message: "发送失败，请稍后再试" });
     }
   });

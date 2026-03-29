@@ -48,6 +48,7 @@ import {
   LineChart,
   Line
 } from 'recharts';
+import { GoogleGenAI } from "@google/genai";
 
 // --- Error Handling ---
 function handleAppError(error: unknown) {
@@ -107,8 +108,8 @@ const getLocalDateString = (date: Date) => {
 };
 
 // --- 核心配置 ---
-// 使用相对路径，通过本地服务器代理请求到阿里云服务器 (解决 HTTPS 页面请求 HTTP 接口的 Mixed Content 问题)
-const API_BASE_URL = '/proxy'; 
+// 使用本地服务器逻辑
+const API_BASE_URL = ''; 
 // 如果您想直接使用本地服务器逻辑，请将上面改为 const API_BASE_URL = '';
 
 // --- 类型定义 ---
@@ -175,6 +176,12 @@ interface WeightRecord {
   id: string;
   date: string;
   weight: number; // 单位：kg
+}
+
+interface Message {
+  role: 'user' | 'model';
+  text: string;
+  timestamp: string;
 }
 
 interface Ingredient {
@@ -293,6 +300,10 @@ function AppContent() {
   const [familyOwnerEmail, setFamilyOwnerEmail] = useState<string | null>(localStorage.getItem('baby_family_owner') || null);
 
   const [activePage, setActivePage] = useState<Page>('home');
+  const [aiMessages, setAiMessages] = useState<Message[]>([]);
+  const [aiInput, setAiInput] = useState('');
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiRecipes, setAiRecipes] = useState<any[]>([]);
   const [selectedMealId, setSelectedMealId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -1498,6 +1509,81 @@ function AppContent() {
     );
   };
 
+  const handleAiSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!aiInput.trim() || isAiLoading) return;
+
+    const userMessage: Message = {
+      role: 'user',
+      text: aiInput,
+      timestamp: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    };
+
+    setAiMessages(prev => [...prev, userMessage]);
+    setAiInput('');
+    setIsAiLoading(true);
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const model = ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: aiMessages.concat(userMessage).map(m => ({
+          role: m.role === 'user' ? 'user' : 'model',
+          parts: [{ text: m.text }]
+        })),
+        config: {
+          systemInstruction: `你是一位专业的育儿专家和营养师，专门为6-12个月大的宝宝提供辅食建议。
+          宝宝当前信息：姓名 ${babyName}，生日 ${babyBirthday}，月龄 ${calculatedBabyInfo.age}。
+          已排敏食材：${safeIngredients.map(id => ingredients.find(i => i.id === id)?.name).join(', ')}。
+          已过敏食材：${allergicIngredients.map(id => ingredients.find(i => i.id === id)?.name).join(', ')}。
+          请以亲切、专业的口吻回答妈妈的问题。如果涉及到食谱，请尽量详细。`
+        }
+      });
+
+      const response = await model;
+      const aiResponse: Message = {
+        role: 'model',
+        text: response.text || '抱歉，我没听清楚，请再说一遍。',
+        timestamp: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+      };
+      setAiMessages(prev => [...prev, aiResponse]);
+    } catch (error) {
+      console.error("AI Error:", error);
+      const errorMessage: Message = {
+        role: 'model',
+        text: '连接AI助手失败，请检查网络或稍后再试。',
+        timestamp: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+      };
+      setAiMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const generateAiRecipes = async () => {
+    setIsAiLoading(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `请根据以下宝宝信息推荐3个适合的辅食食谱：
+        月龄：${calculatedBabyInfo.age}
+        已排敏食材：${safeIngredients.map(id => ingredients.find(i => i.id === id)?.name).join(', ')}
+        已过敏食材：${allergicIngredients.map(id => ingredients.find(i => i.id === id)?.name).join(', ')}
+        请以JSON数组格式返回，每个对象包含：title (食谱名), ingredients (食材列表数组), steps (步骤列表数组), nutrition (营养价值说明)。`,
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
+      const recipes = JSON.parse(response.text);
+      setAiRecipes(recipes);
+    } catch (error) {
+      console.error("Generate Recipes Error:", error);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
   const renderPage = () => {
     switch (activePage) {
       case 'home': {
@@ -2188,15 +2274,38 @@ function AppContent() {
 
       case 'wiki':
         return (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-5 space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-3xl font-black text-gray-800 tracking-tight">食材百科</h2>
-              <button 
-                onClick={() => setIsAddingIngredient(true)}
-                className="duo-btn-orange w-12 h-12 flex items-center justify-center p-0"
-              >
-                <Plus className="w-7 h-7" />
-              </button>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-5 space-y-6 pb-24">
+            <div className="flex flex-col gap-4 border-b-2 border-gray-50 pb-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-3xl font-black text-gray-800 tracking-tight">食材百科</h2>
+                <button 
+                  onClick={() => setIsAddingIngredient(true)}
+                  className="duo-btn-orange w-12 h-12 flex items-center justify-center p-0"
+                >
+                  <Plus className="w-7 h-7" />
+                </button>
+              </div>
+
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setActivePage('ai')}
+                  className={`flex-1 py-2 rounded-xl text-xs font-black transition-all duo-btn-gray text-gray-400`}
+                >
+                  智能咨询
+                </button>
+                <button 
+                  onClick={() => setActivePage('recipes')}
+                  className={`flex-1 py-2 rounded-xl text-xs font-black transition-all duo-btn-gray text-gray-400`}
+                >
+                  个性食谱
+                </button>
+                <button 
+                  onClick={() => setActivePage('wiki')}
+                  className={`flex-1 py-2 rounded-xl text-xs font-black transition-all duo-btn-orange`}
+                >
+                  食材百科
+                </button>
+              </div>
             </div>
             
             {/* 搜索栏 */}
@@ -2751,16 +2860,203 @@ function AppContent() {
       case 'history':
         return renderHistoryPage();
       case 'recipes':
-        return renderTrendsPage();
+        return (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-5 space-y-6 pb-24">
+            <div className="flex flex-col gap-4 border-b-2 border-gray-50 pb-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-3xl font-black text-gray-800 tracking-tight">智能食谱</h2>
+                <button 
+                  onClick={generateAiRecipes}
+                  disabled={isAiLoading}
+                  className="duo-btn-orange px-4 py-2 text-xs flex items-center gap-2 disabled:opacity-50"
+                >
+                  <TrendingUp className={`w-4 h-4 ${isAiLoading ? 'animate-spin' : ''}`} /> 
+                  {aiRecipes.length > 0 ? '重新生成' : '生成食谱'}
+                </button>
+              </div>
+
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setActivePage('ai')}
+                  className={`flex-1 py-2 rounded-xl text-xs font-black transition-all duo-btn-gray text-gray-400`}
+                >
+                  智能咨询
+                </button>
+                <button 
+                  onClick={() => setActivePage('recipes')}
+                  className={`flex-1 py-2 rounded-xl text-xs font-black transition-all duo-btn-orange`}
+                >
+                  个性食谱
+                </button>
+                <button 
+                  onClick={() => setActivePage('wiki')}
+                  className={`flex-1 py-2 rounded-xl text-xs font-black transition-all duo-btn-gray text-gray-400`}
+                >
+                  食材百科
+                </button>
+              </div>
+            </div>
+
+            {isAiLoading && aiRecipes.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 space-y-4">
+                <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+                <p className="text-gray-400 font-black animate-pulse">AI 正在为宝宝定制营养食谱...</p>
+              </div>
+            ) : aiRecipes.length > 0 ? (
+              <div className="space-y-6">
+                {aiRecipes.map((recipe, idx) => (
+                  <motion.div 
+                    key={idx}
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: idx * 0.1 }}
+                    className="duo-card p-6 bg-white space-y-4 border-2 border-orange-100"
+                  >
+                    <h3 className="text-xl font-black text-gray-800 flex items-center gap-2">
+                      <span className="text-2xl">🍲</span>
+                      {recipe.title}
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {recipe.ingredients.map((ing: string, i: number) => (
+                        <span key={i} className="text-[10px] font-black bg-orange-50 text-orange-600 px-2 py-1 rounded-lg border border-orange-100">
+                          {ing}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-xs font-black text-gray-400 uppercase tracking-widest">制作步骤</p>
+                      <ul className="space-y-2">
+                        {recipe.steps.map((step: string, i: number) => (
+                          <li key={i} className="text-sm font-bold text-gray-600 flex gap-3">
+                            <span className="w-5 h-5 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center text-[10px] flex-shrink-0 mt-0.5">{i + 1}</span>
+                            {step}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="p-3 bg-green-50 rounded-xl border border-green-100">
+                      <p className="text-[10px] font-black text-green-700 leading-relaxed">
+                        <span className="mr-1">💡</span>
+                        {recipe.nutrition}
+                      </p>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-20 space-y-4 bg-white rounded-[32px] border-2 border-dashed border-gray-100">
+                <div className="text-6xl opacity-20">🥗</div>
+                <p className="text-gray-400 font-black">点击上方按钮，AI 将根据宝宝月龄<br/>和排敏情况推荐专属食谱</p>
+              </div>
+            )}
+          </motion.div>
+        );
       case 'ai':
         return (
-          <div className="h-full flex flex-col items-center justify-center p-10 text-center space-y-4">
-            <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center">
-              <MessageCircle className="w-10 h-10 text-orange-500" />
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col h-[calc(100vh-160px)]">
+            <div className="p-5 flex flex-col gap-4 border-b-2 border-gray-50">
+              <div className="flex items-center justify-between">
+                <h2 className="text-3xl font-black text-gray-800 tracking-tight">AI 育儿助手</h2>
+                <div className="flex items-center gap-2 bg-green-50 text-green-600 px-3 py-1.5 rounded-xl text-[10px] font-black border border-green-100">
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                  Gemini 在线
+                </div>
+              </div>
+              
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setActivePage('ai')}
+                  className={`flex-1 py-2 rounded-xl text-xs font-black transition-all duo-btn-orange`}
+                >
+                  智能咨询
+                </button>
+                <button 
+                  onClick={() => setActivePage('recipes')}
+                  className={`flex-1 py-2 rounded-xl text-xs font-black transition-all duo-btn-gray text-gray-400`}
+                >
+                  个性食谱
+                </button>
+                <button 
+                  onClick={() => setActivePage('wiki')}
+                  className={`flex-1 py-2 rounded-xl text-xs font-black transition-all duo-btn-gray text-gray-400`}
+                >
+                  食材百科
+                </button>
+              </div>
             </div>
-            <h2 className="text-xl font-bold">AI 辅食顾问</h2>
-            <p className="text-gray-500 text-sm">正在接入 Gemini 智慧大脑，为您解答所有喂养难题...</p>
-          </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-6 no-scrollbar">
+              {aiMessages.length === 0 && (
+                <div className="text-center py-10 space-y-6">
+                  <div className="w-24 h-24 bg-orange-100 rounded-[32px] flex items-center justify-center mx-auto shadow-inner">
+                    <MessageCircle className="w-12 h-12 text-orange-500" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-xl font-black text-gray-800">我是您的专属育儿专家</h3>
+                    <p className="text-sm font-bold text-gray-400 px-10">您可以问我关于辅食添加、营养搭配、过敏处理等任何问题。</p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 px-5">
+                    {[
+                      "6个月宝宝第一口辅食吃什么？",
+                      "如何判断宝宝是否对鸡蛋过敏？",
+                      "宝宝不爱吃南瓜泥怎么办？"
+                    ].map((q, i) => (
+                      <button 
+                        key={i}
+                        onClick={() => { setAiInput(q); }}
+                        className="p-4 bg-white border-2 border-gray-100 rounded-2xl text-sm font-black text-gray-600 hover:border-orange-500 hover:text-orange-500 transition-all text-left"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {aiMessages.map((msg, idx) => (
+                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] p-4 rounded-[24px] shadow-sm ${
+                    msg.role === 'user' 
+                      ? 'bg-orange-500 text-white rounded-tr-none' 
+                      : 'bg-white border-2 border-gray-100 text-gray-800 rounded-tl-none'
+                  }`}>
+                    <p className="text-sm font-bold leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                    <p className={`text-[9px] mt-2 font-black opacity-50 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
+                      {msg.timestamp}
+                    </p>
+                  </div>
+                </div>
+              ))}
+              {isAiLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-white border-2 border-gray-100 p-4 rounded-[24px] rounded-tl-none">
+                    <div className="flex gap-1">
+                      <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-bounce" />
+                      <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-bounce [animation-delay:0.2s]" />
+                      <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-bounce [animation-delay:0.4s]" />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={handleAiSubmit} className="p-5 bg-white border-t-2 border-gray-50 flex gap-3 items-center">
+              <input 
+                type="text" 
+                value={aiInput}
+                onChange={(e) => setAiInput(e.target.value)}
+                placeholder="输入您的问题..."
+                className="flex-1 bg-gray-50 border-2 border-gray-100 rounded-2xl px-5 py-4 font-black text-sm focus:outline-none focus:border-orange-500 transition-colors"
+              />
+              <button 
+                type="submit"
+                disabled={isAiLoading || !aiInput.trim()}
+                className="w-14 h-14 duo-btn-orange flex items-center justify-center p-0 disabled:opacity-50"
+              >
+                <TrendingUp className="w-6 h-6 rotate-90" />
+              </button>
+            </form>
+          </motion.div>
         );
       default:
         return (
@@ -3084,10 +3380,10 @@ function AppContent() {
       {/* 底部导航栏 */}
       <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/90 backdrop-blur-lg border-t-2 border-gray-100 px-6 py-4 flex justify-between items-center safe-area-bottom z-20 shadow-[0_-4px_10px_rgba(0,0,0,0.02)]">
         <NavButton 
-          active={activePage === 'wiki'} 
-          onClick={() => setActivePage('wiki')} 
-          icon={<BookOpen className="w-7 h-7" />} 
-          label="百科" 
+          active={activePage === 'ai'} 
+          onClick={() => setActivePage('ai')} 
+          icon={<MessageCircle className="w-7 h-7" />} 
+          label="AI助手" 
         />
         <NavButton 
           active={activePage === 'history'} 
