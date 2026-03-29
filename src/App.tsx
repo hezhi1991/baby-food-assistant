@@ -554,7 +554,7 @@ function AppContent() {
       }
     } catch (error) {
       console.error("Add member failed:", error);
-      alert('网络错误');
+      alert(`操作失败: ${error instanceof Error ? error.message : '网络错误'}`);
     }
   };
 
@@ -579,8 +579,8 @@ function AppContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: targetEmail.toLowerCase().trim(),
-          oldMemberEmail: editingMemberData.oldEmail.toLowerCase().trim(),
-          newMemberEmail: editingMemberData.newEmail.toLowerCase().trim(),
+          oldMemberEmail: (editingMemberData.oldEmail || '').toLowerCase().trim(),
+          newMemberEmail: (editingMemberData.newEmail || '').toLowerCase().trim(),
           newUsername: editingMemberData.newUsername,
           newRole: editingMemberData.newRole,
           force
@@ -597,8 +597,8 @@ function AppContent() {
       } else if (data.code === 'PRIMARY_OCCUPIED') {
         setForceAddData({
           email: targetEmail.toLowerCase().trim(),
-          oldMemberEmail: editingMemberData.oldEmail.toLowerCase().trim(),
-          newMemberEmail: editingMemberData.newEmail.toLowerCase().trim(),
+          oldMemberEmail: (editingMemberData.oldEmail || '').toLowerCase().trim(),
+          newMemberEmail: (editingMemberData.newEmail || '').toLowerCase().trim(),
           newUsername: editingMemberData.newUsername,
           newRole: editingMemberData.newRole,
           message: data.message,
@@ -610,7 +610,7 @@ function AppContent() {
       }
     } catch (error) {
       console.error("Update member failed:", error);
-      alert('网络错误，请稍后重试');
+      alert(`操作失败: ${error instanceof Error ? error.message : '网络错误'}`);
     }
   };
 
@@ -2626,8 +2626,8 @@ function AppContent() {
                           onClick={(e) => {
                             e.stopPropagation();
                             setEditingMemberData({ 
-                              oldEmail: m.email, 
-                              newEmail: m.email, 
+                              oldEmail: m.email || m.username || '', 
+                              newEmail: m.email || m.username || '', 
                               oldUsername: m.username,
                               newUsername: m.username,
                               oldRole: m.role,

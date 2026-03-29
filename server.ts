@@ -155,7 +155,7 @@ async function startServer() {
     if (isNewUser) {
       db.users[email] = {
         profile: { babyName: "宝宝", babyBirthday: "2025-08-07" },
-        members: [{ username: email, role: "爸爸", isPrimary: true }],
+        members: [{ username: email, email: email, role: "爸爸", isPrimary: true }],
         meals: [],
         vitamins: [],
         weightRecords: [],
@@ -165,10 +165,22 @@ async function startServer() {
         allergicIngredients: []
       };
       writeDB(db);
-    } else if (isPrimaryAccount && !db.users[email].members) {
+    } else if (isPrimaryAccount && (!db.users[email].members || db.users[email].members.length === 0)) {
       // 为老用户兼容新字段
-      db.users[email].members = [{ username: email, role: db.users[email].profile.role || "爸爸", isPrimary: true }];
+      db.users[email].members = [{ 
+        username: email, 
+        email: email, 
+        role: db.users[email].profile?.role || "爸爸", 
+        isPrimary: true 
+      }];
       writeDB(db);
+    } else if (isPrimaryAccount && db.users[email].members) {
+      // 确保现有主账号成员也有 email 字段
+      const primaryMember = db.users[email].members.find((m: any) => m.isPrimary);
+      if (primaryMember && !primaryMember.email) {
+        primaryMember.email = email;
+        writeDB(db);
+      }
     }
 
     res.json({ 
@@ -227,7 +239,7 @@ async function startServer() {
     const db = readDB();
     if (!db.users[email]) return res.status(404).json({ success: false, message: "主账号不存在" });
 
-    if (!db.users[email].members) db.users[email].members = [];
+    if (!db.users[email].members) db.users[email].members = [{ username: email, email: email, role: "爸爸", isPrimary: true }];
     
     // 1. 优先查找是否存在该角色的子账号（排除主账号）
     let memberIndex = db.users[email].members.findIndex((m: any) => m.role === role && !m.isPrimary);
@@ -308,8 +320,12 @@ async function startServer() {
     const db = readDB();
     if (!db.users[email]) return res.status(404).json({ success: false, message: "主账号不存在" });
 
+    if (!db.users[email].members) {
+      db.users[email].members = [{ username: email, email: email, role: "爸爸", isPrimary: true }];
+    }
+
     // 找到成员
-    const memberIndex = db.users[email].members.findIndex((m: any) => m.email === oldMemberEmail);
+    const memberIndex = db.users[email].members.findIndex((m: any) => (m.email || m.username) === oldMemberEmail);
     if (memberIndex === -1) return res.status(404).json({ success: false, message: "成员不存在" });
 
     const member = db.users[email].members[memberIndex];
