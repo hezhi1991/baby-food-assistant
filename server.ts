@@ -214,7 +214,7 @@ async function startServer() {
 
   // 5. 添加家庭成员
   app.post('/api/add-member', (req, res) => {
-    let { email, memberEmail, username, role } = req.body;
+    let { email, memberEmail, username, role, force } = req.body;
     if (!email || !memberEmail || !username || !role) return res.status(400).json({ success: false, message: "参数不全" });
     
     email = email.toLowerCase().trim();
@@ -241,8 +241,20 @@ async function startServer() {
       const oldEmail = db.users[email].members[memberIndex].email;
       
       // 如果新邮箱被其他家庭占用，则报错
-      if (oldEmail !== memberEmail && (db.users[memberEmail] || (db.familyMappings && db.familyMappings[memberEmail] && db.familyMappings[memberEmail] !== email))) {
-        return res.status(400).json({ success: false, message: "该邮箱已被其他家庭占用" });
+      const isOccupiedByOtherFamily = (db.familyMappings && db.familyMappings[memberEmail] && db.familyMappings[memberEmail] !== email);
+      const isPrimaryOfOtherFamily = db.users[memberEmail] && !isOccupiedByOtherFamily; // 如果它在users里但没在mappings里，说明它是主账号
+
+      if (oldEmail !== memberEmail && (isOccupiedByOtherFamily || (isPrimaryOfOtherFamily && !force))) {
+        return res.status(400).json({ 
+          success: false, 
+          message: isPrimaryOfOtherFamily ? "该邮箱已是其他家庭的主账号，是否强制还原为子账号？" : "该邮箱已被其他家庭占用",
+          code: isPrimaryOfOtherFamily ? "PRIMARY_OCCUPIED" : "OCCUPIED"
+        });
+      }
+
+      // 如果是强制还原，删除原有的主账号数据
+      if (force && isPrimaryOfOtherFamily) {
+        delete db.users[memberEmail];
       }
 
       // 更新成员信息
@@ -256,8 +268,20 @@ async function startServer() {
       db.familyMappings[memberEmail] = email;
     } else {
       // 检查新邮箱是否被其他家庭占用
-      if (db.users[memberEmail] || (db.familyMappings && db.familyMappings[memberEmail] && db.familyMappings[memberEmail] !== email)) {
-        return res.status(400).json({ success: false, message: "该邮箱已被其他家庭占用" });
+      const isOccupiedByOtherFamily = (db.familyMappings && db.familyMappings[memberEmail] && db.familyMappings[memberEmail] !== email);
+      const isPrimaryOfOtherFamily = db.users[memberEmail] && (!db.familyMappings || !db.familyMappings[memberEmail]);
+
+      if (isOccupiedByOtherFamily || (isPrimaryOfOtherFamily && !force)) {
+        return res.status(400).json({ 
+          success: false, 
+          message: isPrimaryOfOtherFamily ? "该邮箱已是其他家庭的主账号，是否强制还原为子账号？" : "该邮箱已被其他家庭占用",
+          code: isPrimaryOfOtherFamily ? "PRIMARY_OCCUPIED" : "OCCUPIED"
+        });
+      }
+
+      // 如果是强制还原，删除原有的主账号数据
+      if (force && isPrimaryOfOtherFamily) {
+        delete db.users[memberEmail];
       }
 
       // 添加到主账号的成员列表
@@ -274,7 +298,7 @@ async function startServer() {
 
   // 7. 修改家庭成员信息 (支持更新邮箱、用户名和角色)
   app.post('/api/update-member', (req, res) => {
-    let { email, oldMemberEmail, newMemberEmail, newUsername, newRole } = req.body;
+    let { email, oldMemberEmail, newMemberEmail, newUsername, newRole, force } = req.body;
     if (!email || !oldMemberEmail) return res.status(400).json({ success: false, message: "参数不全" });
 
     email = email.toLowerCase().trim();
@@ -293,8 +317,15 @@ async function startServer() {
     // 如果更新邮箱
     if (newMemberEmail && newMemberEmail !== oldMemberEmail) {
       // 检查新邮箱是否已被占用
-      if (db.users[newMemberEmail] || (db.familyMappings && db.familyMappings[newMemberEmail] && db.familyMappings[newMemberEmail] !== email)) {
-        return res.status(400).json({ success: false, message: "新邮箱已被其他家庭占用" });
+      const isOccupiedByOtherFamily = (db.familyMappings && db.familyMappings[newMemberEmail] && db.familyMappings[newMemberEmail] !== email);
+      const isPrimaryOfOtherFamily = db.users[newMemberEmail] && (!db.familyMappings || !db.familyMappings[newMemberEmail]);
+
+      if (isOccupiedByOtherFamily || (isPrimaryOfOtherFamily && !force)) {
+        return res.status(400).json({ 
+          success: false, 
+          message: isPrimaryOfOtherFamily ? "该邮箱已是其他家庭的主账号，是否强制还原为子账号？" : "新邮箱已被其他家庭占用",
+          code: isPrimaryOfOtherFamily ? "PRIMARY_OCCUPIED" : "OCCUPIED"
+        });
       }
       
       // 主账号的登录邮箱不可修改（因为它是主键）
@@ -302,12 +333,16 @@ async function startServer() {
         return res.status(400).json({ success: false, message: "主账号登录邮箱不可修改" });
       }
 
+      // 如果是强制还原，删除原有的主账号数据
+      if (force && isPrimaryOfOtherFamily) {
+        delete db.users[newMemberEmail];
+      }
+
       member.email = newMemberEmail;
       // 更新家庭映射关系
-      if (db.familyMappings) {
-        delete db.familyMappings[oldMemberEmail];
-        db.familyMappings[newMemberEmail] = email;
-      }
+      if (!db.familyMappings) db.familyMappings = {};
+      delete db.familyMappings[oldMemberEmail];
+      db.familyMappings[newMemberEmail] = email;
     }
 
     // 如果更新角色

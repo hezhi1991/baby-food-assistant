@@ -284,6 +284,8 @@ function AppContent() {
   const [babyInfo, setBabyInfo] = useState<any | null>(null);
   const [members, setMembers] = useState<any[]>([]);
   const [isAddingMember, setIsAddingMember] = useState(false);
+  const [showForceAddConfirm, setShowForceAddConfirm] = useState(false);
+  const [forceAddData, setForceAddData] = useState<any>(null);
   const [isEditingMemberEmail, setIsEditingMemberEmail] = useState(false);
   const [editingMemberData, setEditingMemberData] = useState<{ 
     oldEmail: string, 
@@ -512,7 +514,7 @@ function AppContent() {
     }
   };
 
-  const handleAddMember = async () => {
+  const handleAddMember = async (force = false) => {
     const targetEmail = familyOwnerEmail || email;
     if (!targetEmail || !newMemberData.username || !newMemberData.role || !newMemberData.email) {
       alert('请填写完整信息（包括成员邮箱）');
@@ -526,15 +528,27 @@ function AppContent() {
           email: targetEmail.toLowerCase().trim(),
           memberEmail: newMemberData.email.toLowerCase().trim(),
           username: newMemberData.username,
-          role: newMemberData.role
+          role: newMemberData.role,
+          force
         })
       });
       const result = await response.json();
       if (result.success) {
         setIsAddingMember(false);
+        setShowForceAddConfirm(false);
+        setForceAddData(null);
         setNewMemberData({ username: '', email: '', role: '爸爸' as FamilyRole });
         fetchUserData(targetEmail);
         alert('添加成功！该成员现在可以用自己的邮箱登录并共享数据了。');
+      } else if (result.code === 'PRIMARY_OCCUPIED') {
+        setForceAddData({
+          email: targetEmail.toLowerCase().trim(),
+          memberEmail: newMemberData.email.toLowerCase().trim(),
+          username: newMemberData.username,
+          role: newMemberData.role,
+          message: result.message
+        });
+        setShowForceAddConfirm(true);
       } else {
         alert(result.message || '添加失败，请确保该邮箱已注册');
       }
@@ -544,7 +558,7 @@ function AppContent() {
     }
   };
 
-  const handleUpdateMember = async () => {
+  const handleUpdateMember = async (force = false) => {
     const targetEmail = familyOwnerEmail || email;
     if (!targetEmail || !editingMemberData) {
       alert('参数错误');
@@ -568,15 +582,29 @@ function AppContent() {
           oldMemberEmail: editingMemberData.oldEmail.toLowerCase().trim(),
           newMemberEmail: editingMemberData.newEmail.toLowerCase().trim(),
           newUsername: editingMemberData.newUsername,
-          newRole: editingMemberData.newRole
+          newRole: editingMemberData.newRole,
+          force
         })
       });
       const data = await response.json();
       if (data.success) {
         setIsEditingMemberEmail(false);
+        setShowForceAddConfirm(false);
+        setForceAddData(null);
         setEditingMemberData(null);
         fetchUserData(targetEmail);
         alert('修改成功');
+      } else if (data.code === 'PRIMARY_OCCUPIED') {
+        setForceAddData({
+          email: targetEmail.toLowerCase().trim(),
+          oldMemberEmail: editingMemberData.oldEmail.toLowerCase().trim(),
+          newMemberEmail: editingMemberData.newEmail.toLowerCase().trim(),
+          newUsername: editingMemberData.newUsername,
+          newRole: editingMemberData.newRole,
+          message: data.message,
+          isUpdate: true
+        });
+        setShowForceAddConfirm(true);
       } else {
         alert(data.message || '修改失败');
       }
@@ -2742,7 +2770,7 @@ function AppContent() {
                         取消
                       </button>
                       <button 
-                        onClick={handleUpdateMember}
+                        onClick={() => handleUpdateMember()}
                         className="flex-1 py-5 bg-orange-500 rounded-[24px] font-black text-white text-lg shadow-lg shadow-orange-200 active:scale-95 transition-all"
                       >
                         保存修改
@@ -2797,7 +2825,48 @@ function AppContent() {
                   </div>
                   <div className="flex gap-3 pt-4">
                     <button onClick={() => setIsAddingMember(false)} className="flex-1 py-4 duo-btn-gray text-gray-500">取消</button>
-                    <button onClick={handleAddMember} className="flex-1 py-4 duo-btn-orange">确认添加</button>
+                    <button onClick={() => handleAddMember()} className="flex-1 py-4 duo-btn-orange">确认添加</button>
+                  </div>
+                </motion.div>
+              </div>
+            )}
+
+            {/* 强制添加确认弹窗 */}
+            {showForceAddConfirm && (
+              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-5">
+                <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-md rounded-[32px] p-8 space-y-6 shadow-2xl border-4 border-orange-500">
+                  <div className="flex items-center gap-3 text-orange-500">
+                    <AlertCircle className="w-8 h-8" />
+                    <h3 className="text-2xl font-black">强制还原确认</h3>
+                  </div>
+                  <div className="space-y-4 text-gray-600 font-bold">
+                    <p>{forceAddData?.message}</p>
+                    <div className="bg-orange-50 p-4 rounded-2xl text-xs text-orange-800 border border-orange-100">
+                      ⚠️ 注意：强制还原将删除该邮箱名下现有的所有独立家庭数据（餐次、记录等），并将其作为子账号加入您的家庭。此操作不可撤销。
+                    </div>
+                  </div>
+                  <div className="flex gap-3 pt-4">
+                    <button 
+                      onClick={() => {
+                        setShowForceAddConfirm(false);
+                        setForceAddData(null);
+                      }} 
+                      className="flex-1 py-4 duo-btn-gray text-gray-500"
+                    >
+                      取消
+                    </button>
+                    <button 
+                      onClick={() => {
+                        if (forceAddData?.isUpdate) {
+                          handleUpdateMember(true);
+                        } else {
+                          handleAddMember(true);
+                        }
+                      }} 
+                      className="flex-1 py-4 duo-btn-orange"
+                    >
+                      确认强制还原
+                    </button>
                   </div>
                 </motion.div>
               </div>
