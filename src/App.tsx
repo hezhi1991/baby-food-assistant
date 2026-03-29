@@ -289,7 +289,7 @@ function AppContent() {
   } | null>(null);
   const [isMigratingData, setIsMigratingData] = useState(false);
   const [migrationJson, setMigrationJson] = useState('');
-  const [newMemberData, setNewMemberData] = useState({ username: '', email: '', role: '爸爸' as FamilyRole });
+  const [newMemberData, setNewMemberData] = useState({ username: '', email: '', role: '妈妈' as FamilyRole });
   const [familyOwnerEmail, setFamilyOwnerEmail] = useState<string | null>(localStorage.getItem('baby_family_owner') || null);
 
   const [activePage, setActivePage] = useState<Page>('home');
@@ -368,12 +368,13 @@ function AppContent() {
 
   const handleSendCode = async () => {
     if (!loginEmail) return;
+    const normalizedEmail = loginEmail.toLowerCase().trim();
     setIsSendingCode(true);
     try {
       const response = await fetch(`${API_BASE_URL}/api/send-code`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: loginEmail })
+        body: JSON.stringify({ email: normalizedEmail })
       });
       const data = await response.json();
       if (data.success) {
@@ -391,17 +392,18 @@ function AppContent() {
 
   const handleLogin = async () => {
     if (!loginEmail || !verificationCode) return;
+    const normalizedEmail = loginEmail.toLowerCase().trim();
     try {
       const response = await fetch(`${API_BASE_URL}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: loginEmail, code: verificationCode })
+        body: JSON.stringify({ email: normalizedEmail, code: verificationCode })
       });
       const data = await response.json();
       if (data.success) {
-        localStorage.setItem('baby_food_email', loginEmail);
-        setUser({ uid: loginEmail, email: loginEmail });
-        setEmail(loginEmail);
+        localStorage.setItem('baby_food_email', normalizedEmail);
+        setUser({ uid: normalizedEmail, email: normalizedEmail });
+        setEmail(normalizedEmail);
         setIsLoggedIn(true);
 
         // 处理家庭共享逻辑：如果后端返回了主账号邮箱
@@ -446,7 +448,7 @@ function AppContent() {
           if (currentMember) {
             setUserRole(currentMember.role);
           } else {
-            setUserRole(userData.profile.role || '妈妈');
+            setUserRole(userData.profile.role || '爸爸');
           }
         }
         setMeals(userData.meals || []);
@@ -510,8 +512,8 @@ function AppContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: targetEmail, // 改回使用 'email' 关键字，兼容后端要求
-          memberEmail: newMemberData.email, // 成员的登录邮箱
+          email: targetEmail.toLowerCase().trim(),
+          memberEmail: newMemberData.email.toLowerCase().trim(),
           username: newMemberData.username,
           role: newMemberData.role
         })
@@ -551,9 +553,9 @@ function AppContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: targetEmail, // 主账号邮箱
-          oldMemberEmail: editingMemberData.oldEmail,
-          newMemberEmail: editingMemberData.newEmail,
+          email: targetEmail.toLowerCase().trim(),
+          oldMemberEmail: editingMemberData.oldEmail.toLowerCase().trim(),
+          newMemberEmail: editingMemberData.newEmail.toLowerCase().trim(),
           newUsername: editingMemberData.newUsername,
           newRole: editingMemberData.newRole
         })

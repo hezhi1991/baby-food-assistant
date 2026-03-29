@@ -89,8 +89,11 @@ async function startServer() {
 
   // 1. 发送验证码
   app.post('/api/send-code', async (req, res) => {
-    const { email } = req.body;
-    if (!email || !EMAIL_REGEX.test(email)) {
+    let { email } = req.body;
+    if (!email) return res.status(400).json({ success: false, message: "请输入邮箱" });
+    email = email.toLowerCase().trim();
+    
+    if (!EMAIL_REGEX.test(email)) {
       return res.status(400).json({ success: false, message: "请输入有效的邮箱地址" });
     }
 
@@ -122,7 +125,10 @@ async function startServer() {
 
   // 2. 登录接口 (验证码登录)
   app.post('/api/login', (req, res) => {
-    const { email, code } = req.body;
+    let { email, code } = req.body;
+    if (!email) return res.status(400).json({ success: false, message: "参数不全" });
+    email = email.toLowerCase().trim();
+    
     const record = verificationCodes[email];
 
     if (!record || record.code !== code || record.expires < Date.now()) {
@@ -143,7 +149,7 @@ async function startServer() {
     if (isNewUser) {
       db.users[email] = {
         profile: { babyName: "宝宝", babyBirthday: "2025-08-07" },
-        members: [{ username: email, role: "妈妈", isPrimary: true }],
+        members: [{ username: email, role: "爸爸", isPrimary: true }],
         meals: [],
         vitamins: [],
         weightRecords: [],
@@ -155,7 +161,7 @@ async function startServer() {
       writeDB(db);
     } else if (isPrimaryAccount && !db.users[email].members) {
       // 为老用户兼容新字段
-      db.users[email].members = [{ username: email, role: db.users[email].profile.role || "妈妈", isPrimary: true }];
+      db.users[email].members = [{ username: email, role: db.users[email].profile.role || "爸爸", isPrimary: true }];
       writeDB(db);
     }
 
@@ -170,8 +176,9 @@ async function startServer() {
 
   // 3. 获取用户数据 (SaaS 隔离)
   app.get('/api/get-user-data', (req, res) => {
-    const { email } = req.query;
+    let { email } = req.query;
     if (!email || typeof email !== 'string') return res.status(400).json({ success: false, message: "未识别身份" });
+    email = email.toLowerCase().trim();
 
     const db = readDB();
     const userData = db.users[email];
@@ -185,8 +192,9 @@ async function startServer() {
 
   // 4. 保存用户数据 (SaaS 隔离)
   app.post('/api/save-user-data', (req, res) => {
-    const { email, type, data } = req.body;
+    let { email, type, data } = req.body;
     if (!email || !type) return res.status(400).json({ success: false, message: "参数不全" });
+    email = email.toLowerCase().trim();
 
     const db = readDB();
     if (!db.users[email]) return res.status(404).json({ success: false, message: "用户不存在" });
@@ -200,23 +208,30 @@ async function startServer() {
 
   // 5. 添加家庭成员
   app.post('/api/add-member', (req, res) => {
-    const { email, memberEmail, username, role } = req.body;
+    let { email, memberEmail, username, role } = req.body;
     if (!email || !memberEmail || !username || !role) return res.status(400).json({ success: false, message: "参数不全" });
+    
+    email = email.toLowerCase().trim();
+    memberEmail = memberEmail.toLowerCase().trim();
+
+    if (email === memberEmail) {
+      return res.status(400).json({ success: false, message: "不能添加自己为子账号" });
+    }
 
     const db = readDB();
     if (!db.users[email]) return res.status(404).json({ success: false, message: "主账号不存在" });
 
     if (!db.users[email].members) db.users[email].members = [];
     
-    // 检查角色是否已存在，如果存在则更新，否则添加
-    const memberIndex = db.users[email].members.findIndex((m: any) => m.role === role);
+    // 1. 优先查找是否存在该角色的子账号（排除主账号）
+    let memberIndex = db.users[email].members.findIndex((m: any) => m.role === role && !m.isPrimary);
     
-    if (memberIndex !== -1) {
-      // 如果是主账号角色，不允许通过此接口修改（通常主账号是创建者）
-      if (db.users[email].members[memberIndex].isPrimary) {
-        return res.status(400).json({ success: false, message: "主账号角色不可覆盖" });
-      }
+    // 2. 如果没找到该角色的子账号，再看该邮箱是否已经在家庭中（可能是换角色）
+    if (memberIndex === -1) {
+      memberIndex = db.users[email].members.findIndex((m: any) => m.email === memberEmail && !m.isPrimary);
+    }
 
+    if (memberIndex !== -1) {
       const oldEmail = db.users[email].members[memberIndex].email;
       
       // 如果新邮箱被其他家庭占用，则报错
@@ -227,17 +242,13 @@ async function startServer() {
       // 更新成员信息
       db.users[email].members[memberIndex].username = username;
       db.users[email].members[memberIndex].email = memberEmail;
+      db.users[email].members[memberIndex].role = role; // 确保角色也更新
 
       // 更新家庭映射关系
-      if (db.familyMappings) {
-        delete db.familyMappings[oldEmail];
-        db.familyMappings[memberEmail] = email;
-      }
+      if (!db.familyMappings) db.familyMappings = {};
+      if (oldEmail) delete db.familyMappings[oldEmail];
+      db.familyMappings[memberEmail] = email;
     } else {
-      // 检查用户名或邮箱是否已在当前家庭中存在（针对新角色）
-      const exists = db.users[email].members.find((m: any) => m.username === username || m.email === memberEmail);
-      if (exists) return res.status(400).json({ success: false, message: "该用户名或邮箱已在家庭中存在" });
-
       // 检查新邮箱是否被其他家庭占用
       if (db.users[memberEmail] || (db.familyMappings && db.familyMappings[memberEmail] && db.familyMappings[memberEmail] !== email)) {
         return res.status(400).json({ success: false, message: "该邮箱已被其他家庭占用" });
@@ -257,8 +268,12 @@ async function startServer() {
 
   // 7. 修改家庭成员信息 (支持更新邮箱、用户名和角色)
   app.post('/api/update-member', (req, res) => {
-    const { email, oldMemberEmail, newMemberEmail, newUsername, newRole } = req.body;
+    let { email, oldMemberEmail, newMemberEmail, newUsername, newRole } = req.body;
     if (!email || !oldMemberEmail) return res.status(400).json({ success: false, message: "参数不全" });
+
+    email = email.toLowerCase().trim();
+    oldMemberEmail = oldMemberEmail.toLowerCase().trim();
+    if (newMemberEmail) newMemberEmail = newMemberEmail.toLowerCase().trim();
 
     const db = readDB();
     if (!db.users[email]) return res.status(404).json({ success: false, message: "主账号不存在" });
@@ -316,7 +331,7 @@ async function startServer() {
       // 如果用户不存在，先初始化
       db.users[email] = {
         profile: { babyName: "宝宝", babyBirthday: "2025-08-07" },
-        members: [{ username: email, role: "妈妈", isPrimary: true }],
+        members: [{ username: email, role: "爸爸", isPrimary: true }],
         meals: [],
         vitamins: [],
         weightRecords: [],
