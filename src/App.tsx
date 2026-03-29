@@ -278,7 +278,15 @@ function AppContent() {
   const [members, setMembers] = useState<any[]>([]);
   const [isAddingMember, setIsAddingMember] = useState(false);
   const [isEditingMemberEmail, setIsEditingMemberEmail] = useState(false);
-  const [editingMemberData, setEditingMemberData] = useState<{ oldEmail: string, newEmail: string, role: string } | null>(null);
+  const [editingMemberData, setEditingMemberData] = useState<{ 
+    oldEmail: string, 
+    newEmail: string, 
+    oldUsername: string,
+    newUsername: string,
+    oldRole: string,
+    newRole: string,
+    isPrimary: boolean 
+  } | null>(null);
   const [isMigratingData, setIsMigratingData] = useState(false);
   const [migrationJson, setMigrationJson] = useState('');
   const [newMemberData, setNewMemberData] = useState({ username: '', email: '', role: '爸爸' as FamilyRole });
@@ -523,27 +531,31 @@ function AppContent() {
     }
   };
 
-  const handleUpdateMemberEmail = async () => {
+  const handleUpdateMember = async () => {
     const targetEmail = familyOwnerEmail || email;
-    if (!targetEmail || !editingMemberData || !editingMemberData.newEmail) {
-      alert('请输入新邮箱');
+    if (!targetEmail || !editingMemberData) {
+      alert('参数错误');
       return;
     }
     
     // 如果没有变化，直接关闭
-    if (editingMemberData.newEmail === editingMemberData.oldEmail) {
+    if (editingMemberData.newEmail === editingMemberData.oldEmail && 
+        editingMemberData.newUsername === editingMemberData.oldUsername && 
+        editingMemberData.newRole === editingMemberData.oldRole) {
       setIsEditingMemberEmail(false);
       return;
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/update-member-email`, {
+      const response = await fetch(`${API_BASE_URL}/api/update-member`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: targetEmail, // 主账号邮箱
           oldMemberEmail: editingMemberData.oldEmail,
-          newMemberEmail: editingMemberData.newEmail
+          newMemberEmail: editingMemberData.newEmail,
+          newUsername: editingMemberData.newUsername,
+          newRole: editingMemberData.newRole
         })
       });
       const data = await response.json();
@@ -556,7 +568,7 @@ function AppContent() {
         alert(data.message || '修改失败');
       }
     } catch (error) {
-      console.error("Update member email failed:", error);
+      console.error("Update member failed:", error);
       alert('网络错误，请稍后重试');
     }
   };
@@ -2471,18 +2483,24 @@ function AppContent() {
                         {userRole === m.role && (
                           <CheckCircle2 className="w-5 h-5 text-orange-500" />
                         )}
-                        {!m.isPrimary && (
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingMemberData({ oldEmail: m.email, newEmail: m.email, role: m.role });
-                              setIsEditingMemberEmail(true);
-                            }}
-                            className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
-                          >
-                            <Pencil className="w-4 h-4 text-gray-400" />
-                          </button>
-                        )}
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingMemberData({ 
+                              oldEmail: m.email, 
+                              newEmail: m.email, 
+                              oldUsername: m.username,
+                              newUsername: m.username,
+                              oldRole: m.role,
+                              newRole: m.role,
+                              isPrimary: m.isPrimary 
+                            });
+                            setIsEditingMemberEmail(true);
+                          }}
+                          className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+                        >
+                          <Pencil className="w-4 h-4 text-gray-400" />
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -2555,31 +2573,56 @@ function AppContent() {
               </div>
             )}
 
-            {/* 修改成员邮箱弹窗 */}
+            {/* 修改成员信息弹窗 */}
             {isEditingMemberEmail && editingMemberData && (
               <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-5">
                 <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-md rounded-[32px] p-8 space-y-6 shadow-2xl">
                   <div className="flex justify-between items-center">
-                    <h3 className="text-2xl font-black text-gray-800">修改成员邮箱</h3>
+                    <h3 className="text-2xl font-black text-gray-800">{editingMemberData.isPrimary ? '修改我的角色' : '修改成员信息'}</h3>
                     <button onClick={() => setIsEditingMemberEmail(false)} className="text-gray-400 hover:text-gray-600">
                       <X className="w-6 h-6" />
                     </button>
                   </div>
                   <div className="space-y-4">
-                    <div className="p-4 bg-orange-50 rounded-2xl border border-orange-100">
-                      <p className="text-xs font-black text-orange-600 uppercase tracking-widest mb-1">正在修改角色</p>
-                      <p className="text-lg font-black text-gray-800">{editingMemberData.role}</p>
-                    </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">新登录邮箱</label>
+                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">成员角色</label>
+                      <div className="grid grid-cols-4 gap-2">
+                        {['妈妈', '爸爸', '爷爷', '奶奶', '外公', '外婆', '月嫂', '其他'].map((r) => (
+                          <button
+                            key={r}
+                            onClick={() => setEditingMemberData({ ...editingMemberData, newRole: r })}
+                            className={`py-2 rounded-xl font-black text-xs transition-all ${editingMemberData.newRole === r ? 'bg-orange-500 text-white shadow-md' : 'bg-gray-50 text-gray-400 border border-gray-100'}`}
+                          >
+                            {r}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">用户名</label>
                       <input 
-                        type="email" 
-                        value={editingMemberData.newEmail}
-                        onChange={(e) => setEditingMemberData({...editingMemberData, newEmail: e.target.value})}
-                        placeholder="输入该成员的新登录邮箱"
+                        type="text" 
+                        value={editingMemberData.newUsername}
+                        onChange={(e) => setEditingMemberData({...editingMemberData, newUsername: e.target.value})}
+                        placeholder="输入用户名"
                         className="w-full px-6 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl font-black text-lg focus:outline-none focus:border-orange-500 transition-colors"
                       />
                     </div>
+
+                    {!editingMemberData.isPrimary && (
+                      <div className="space-y-2">
+                        <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">登录邮箱</label>
+                        <input 
+                          type="email" 
+                          value={editingMemberData.newEmail}
+                          onChange={(e) => setEditingMemberData({...editingMemberData, newEmail: e.target.value})}
+                          placeholder="输入该成员的新登录邮箱"
+                          className="w-full px-6 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl font-black text-lg focus:outline-none focus:border-orange-500 transition-colors"
+                        />
+                      </div>
+                    )}
+
                     <div className="flex gap-4 pt-2">
                       <button 
                         onClick={() => setIsEditingMemberEmail(false)}
@@ -2588,7 +2631,7 @@ function AppContent() {
                         取消
                       </button>
                       <button 
-                        onClick={handleUpdateMemberEmail}
+                        onClick={handleUpdateMember}
                         className="flex-1 py-5 bg-orange-500 rounded-[24px] font-black text-white text-lg shadow-lg shadow-orange-200 active:scale-95 transition-all"
                       >
                         保存修改
@@ -2599,11 +2642,12 @@ function AppContent() {
               </div>
             )}
 
-            {/* 添加成员弹窗 */}
+            {/* 添加/更新成员弹窗 */}
             {isAddingMember && (
               <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-5">
                 <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-md rounded-[32px] p-8 space-y-6 shadow-2xl">
-                  <h3 className="text-2xl font-black text-gray-800">添加家庭成员</h3>
+                  <h3 className="text-2xl font-black text-gray-800">添加/更新家庭成员</h3>
+                  <p className="text-xs font-bold text-gray-400 mb-4">如果角色已存在，将更新其登录邮箱</p>
                   <div className="space-y-4">
                     <div>
                       <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">成员用户名</label>

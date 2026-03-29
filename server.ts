@@ -208,50 +208,101 @@ async function startServer() {
 
     if (!db.users[email].members) db.users[email].members = [];
     
-    // 检查是否已存在
-    const exists = db.users[email].members.find((m: any) => m.username === username || m.email === memberEmail);
-    if (exists) return res.status(400).json({ success: false, message: "该成员已存在" });
-
-    // 添加到主账号的成员列表
-    db.users[email].members.push({ username, email: memberEmail, role, isPrimary: false });
+    // 检查角色是否已存在，如果存在则更新，否则添加
+    const memberIndex = db.users[email].members.findIndex((m: any) => m.role === role);
     
-    // 建立家庭映射关系：子账号 -> 主账号
-    if (!db.familyMappings) db.familyMappings = {};
-    db.familyMappings[memberEmail] = email;
+    if (memberIndex !== -1) {
+      // 如果是主账号角色，不允许通过此接口修改（通常主账号是创建者）
+      if (db.users[email].members[memberIndex].isPrimary) {
+        return res.status(400).json({ success: false, message: "主账号角色不可覆盖" });
+      }
+
+      const oldEmail = db.users[email].members[memberIndex].email;
+      
+      // 如果新邮箱被其他家庭占用，则报错
+      if (oldEmail !== memberEmail && (db.users[memberEmail] || (db.familyMappings && db.familyMappings[memberEmail] && db.familyMappings[memberEmail] !== email))) {
+        return res.status(400).json({ success: false, message: "该邮箱已被其他家庭占用" });
+      }
+
+      // 更新成员信息
+      db.users[email].members[memberIndex].username = username;
+      db.users[email].members[memberIndex].email = memberEmail;
+
+      // 更新家庭映射关系
+      if (db.familyMappings) {
+        delete db.familyMappings[oldEmail];
+        db.familyMappings[memberEmail] = email;
+      }
+    } else {
+      // 检查用户名或邮箱是否已在当前家庭中存在（针对新角色）
+      const exists = db.users[email].members.find((m: any) => m.username === username || m.email === memberEmail);
+      if (exists) return res.status(400).json({ success: false, message: "该用户名或邮箱已在家庭中存在" });
+
+      // 检查新邮箱是否被其他家庭占用
+      if (db.users[memberEmail] || (db.familyMappings && db.familyMappings[memberEmail] && db.familyMappings[memberEmail] !== email)) {
+        return res.status(400).json({ success: false, message: "该邮箱已被其他家庭占用" });
+      }
+
+      // 添加到主账号的成员列表
+      db.users[email].members.push({ username, email: memberEmail, role, isPrimary: false });
+      
+      // 建立家庭映射关系
+      if (!db.familyMappings) db.familyMappings = {};
+      db.familyMappings[memberEmail] = email;
+    }
     
     writeDB(db);
-
-    res.json({ success: true, message: "添加成功", members: db.users[email].members });
+    res.json({ success: true, message: "操作成功", members: db.users[email].members });
   });
 
-  // 7. 修改家庭成员邮箱
-  app.post('/api/update-member-email', (req, res) => {
-    const { email, oldMemberEmail, newMemberEmail } = req.body;
-    if (!email || !oldMemberEmail || !newMemberEmail) return res.status(400).json({ success: false, message: "参数不全" });
+  // 7. 修改家庭成员信息 (支持更新邮箱、用户名和角色)
+  app.post('/api/update-member', (req, res) => {
+    const { email, oldMemberEmail, newMemberEmail, newUsername, newRole } = req.body;
+    if (!email || !oldMemberEmail) return res.status(400).json({ success: false, message: "参数不全" });
 
     const db = readDB();
     if (!db.users[email]) return res.status(404).json({ success: false, message: "主账号不存在" });
 
-    // 检查新邮箱是否已被占用
-    if (db.users[newMemberEmail] || (db.familyMappings && db.familyMappings[newMemberEmail] && db.familyMappings[newMemberEmail] !== email)) {
-      return res.status(400).json({ success: false, message: "新邮箱已被其他家庭占用" });
-    }
-
-    // 找到并更新成员列表
+    // 找到成员
     const memberIndex = db.users[email].members.findIndex((m: any) => m.email === oldMemberEmail);
     if (memberIndex === -1) return res.status(404).json({ success: false, message: "成员不存在" });
 
-    db.users[email].members[memberIndex].email = newMemberEmail;
-    db.users[email].members[memberIndex].username = newMemberEmail; // 同时更新用户名
+    const member = db.users[email].members[memberIndex];
 
-    // 更新家庭映射关系
-    if (db.familyMappings) {
-      delete db.familyMappings[oldMemberEmail];
-      db.familyMappings[newMemberEmail] = email;
+    // 如果更新邮箱
+    if (newMemberEmail && newMemberEmail !== oldMemberEmail) {
+      // 检查新邮箱是否已被占用
+      if (db.users[newMemberEmail] || (db.familyMappings && db.familyMappings[newMemberEmail] && db.familyMappings[newMemberEmail] !== email)) {
+        return res.status(400).json({ success: false, message: "新邮箱已被其他家庭占用" });
+      }
+      
+      // 主账号的登录邮箱不可修改（因为它是主键）
+      if (member.isPrimary) {
+        return res.status(400).json({ success: false, message: "主账号登录邮箱不可修改" });
+      }
+
+      member.email = newMemberEmail;
+      // 更新家庭映射关系
+      if (db.familyMappings) {
+        delete db.familyMappings[oldMemberEmail];
+        db.familyMappings[newMemberEmail] = email;
+      }
+    }
+
+    // 如果更新角色
+    if (newRole && newRole !== member.role) {
+      // 检查新角色是否已在家庭中存在
+      const roleExists = db.users[email].members.find((m: any) => m.role === newRole);
+      if (roleExists) return res.status(400).json({ success: false, message: "该角色在家庭中已存在" });
+      member.role = newRole;
+    }
+
+    // 如果更新用户名
+    if (newUsername) {
+      member.username = newUsername;
     }
 
     writeDB(db);
-
     res.json({ success: true, message: "修改成功", members: db.users[email].members });
   });
 
